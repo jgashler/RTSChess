@@ -1,27 +1,38 @@
 #pragma once
-#include <enet/enet.h>
 #include "Packets.h"
+#include <functional>
+#include <cstdint>
 
-class Game;
+// ENet types forward-declared so enet.h is NOT included here.
+// Including enet.h in a header pulls in <windows.h> which conflicts
+// with raylib.h macros (Rectangle, DrawText, CloseWindow, etc.).
+struct _ENetHost;
+struct _ENetPeer;
+typedef struct _ENetHost ENetHost;
+typedef struct _ENetPeer ENetPeer;
 
 class NetHost {
 public:
-    // Returns true on success. Call once before the game loop.
+    // Called by move callback when a client move request arrives
+    using MoveCallback = std::function<void(uint8_t pieceId, int destX, int destY)>;
+
+    // One-time ENet library init/shutdown — call from main(), not from here
+    static bool GlobalInit();
+    static void GlobalShutdown();
+
     bool Init(uint16_t port = 7777);
-
-    // Call every frame: accepts new connections and dispatches move requests.
-    void Poll(Game& game);
-
-    // Send authoritative game state to the connected client.
+    void Poll();                                          // process incoming packets
+    void SetMoveCallback(MoveCallback cb) { onMove = std::move(cb); }
     void BroadcastState(const GameStatePacket& pkt);
 
-    bool HasClient()    const { return peer != nullptr; }
-    bool IsListening()  const { return host != nullptr; }
+    bool HasClient()   const { return peer != nullptr; }
+    bool IsListening() const { return host != nullptr; }
 
     void Shutdown();
     ~NetHost() { Shutdown(); }
 
 private:
-    ENetHost* host = nullptr;
-    ENetPeer* peer = nullptr;   // single client (1v1)
+    ENetHost*    host   = nullptr;
+    ENetPeer*    peer   = nullptr;
+    MoveCallback onMove;
 };

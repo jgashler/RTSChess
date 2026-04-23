@@ -1,28 +1,29 @@
 #pragma once
-#include <enet/enet.h>
 #include "Packets.h"
+#include <functional>
+#include <cstdint>
 
-class Game;
+// ENet types forward-declared — keeps enet.h (and windows.h) out of this header.
+struct _ENetHost;
+struct _ENetPeer;
+typedef struct _ENetHost ENetHost;
+typedef struct _ENetPeer ENetPeer;
 
 class NetClient {
 public:
-    // Returns true when connection handshake completes.
+    using StateCallback = std::function<void(const GameStatePacket&)>;
+
     bool Connect(const char* address, uint16_t port = 7777);
-
-    // Call every frame: dispatches incoming state packets.
-    void Poll(Game& game);
-
-    // Send a move request to the server.
+    void Poll();
+    void SetStateCallback(StateCallback cb) { onState = std::move(cb); }
     void SendMoveRequest(uint8_t pieceId, int destX, int destY);
 
-    bool IsConnected() const {
-        return peer && peer->state == ENET_PEER_STATE_CONNECTED;
-    }
-
+    bool IsConnected() const;
     void Disconnect();
     ~NetClient() { Disconnect(); }
 
 private:
-    ENetHost* host = nullptr;
-    ENetPeer* peer = nullptr;
+    ENetHost*     host    = nullptr;
+    ENetPeer*     peer    = nullptr;
+    StateCallback onState;
 };

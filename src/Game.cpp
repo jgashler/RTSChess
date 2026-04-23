@@ -167,18 +167,27 @@ void Game::GenerateBgNoise() {
 // ─────────────────────────────────────────────
 //  Networking
 // ─────────────────────────────────────────────
+Game::Game()  = default;
+Game::~Game() = default;   // defined here where NetHost/NetClient are complete
+
 void Game::SetNetMode(NetMode mode, const char* address, uint16_t port) {
     netMode = mode;
     netHost.reset();
     netClient.reset();
 
     if (mode == NetMode::HOST) {
-        localColor = PieceColor::Light;   // host plays white
+        localColor = PieceColor::Light;
         netHost    = std::make_unique<NetHost>();
+        netHost->SetMoveCallback([this](uint8_t id, int x, int y) {
+            ExecuteMoveRequest(id, {x, y});
+        });
         netHost->Init(port);
     } else if (mode == NetMode::CLIENT) {
-        localColor = PieceColor::Dark;    // client plays black
+        localColor = PieceColor::Dark;
         netClient  = std::make_unique<NetClient>();
+        netClient->SetStateCallback([this](const GameStatePacket& pkt) {
+            ApplyNetState(pkt);
+        });
         netClient->Connect(address, port);
     }
 }
@@ -296,7 +305,7 @@ void Game::Update(float dt) {
 
     if (netMode == NetMode::CLIENT) {
         // Client: receive server state, send our input — no local simulation
-        if (netClient) netClient->Poll(*this);
+        if (netClient) netClient->Poll();
         if (state == GameState::PLAYING) HandleInput();
         return;
     }
@@ -313,7 +322,7 @@ void Game::Update(float dt) {
 
     if (netMode == NetMode::HOST && netHost) {
         // Receive move requests from client
-        netHost->Poll(*this);
+        netHost->Poll();
         // Broadcast authoritative state at 20 Hz
         netBroadcastTimer += dt;
         if (netBroadcastTimer >= 0.05f) {

@@ -1,5 +1,6 @@
 #pragma once
 #include "raylib.h"
+#include <cstdint>
 
 enum class PieceType  { PAWN, ROOK, KNIGHT, BISHOP, QUEEN, KING };
 enum class PieceColor { Light, Dark };  // NOT White/Black — raylib macros those

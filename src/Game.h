@@ -15,6 +15,8 @@ class NetClient;
 
 class Game {
 public:
+    Game();
+    ~Game();   // defined in Game.cpp where NetHost/NetClient are complete types
     void Init();
     void Update(float dt);
     void Draw();
