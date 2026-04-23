@@ -107,6 +107,19 @@ private:
     bool    IsValidDest(GridPos g) const;
     Player& PlayerFor(PieceColor c) { return c == PieceColor::Light ? white : black; }
 
+    // --- particles ---
+    struct Particle {
+        Vector3 pos, vel;
+        float   life, maxLife;
+    };
+    std::vector<Particle> particles;
+    void SpawnDeathParticles(Vector3 pos);
+    void UpdateParticles(float dt);
+    void DrawParticles();
+
+    // --- check detection ---
+    bool IsInCheck(PieceColor color) const;
+
     // --- draw ---
     void GenerateBgNoise();
     void DrawManaChannel(float edgeZ, float mana);

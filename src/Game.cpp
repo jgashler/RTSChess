@@ -123,6 +123,7 @@ void Game::Init() {
     state         = GameState::PLAYING;
     selectedPiece = nullptr;
     validMoves.clear();
+    particles.clear();
 
     // Host (Light) sits on the negative-Z side; Client (Dark) on the positive-Z side.
     bool isDark       = (localColor == PieceColor::Dark);
@@ -344,7 +345,10 @@ void Game::Update(float dt) {
     }
 
     // STANDALONE or HOST: run full simulation
-    if (state != GameState::PLAYING) return;
+    if (state != GameState::PLAYING) {
+        UpdateParticles(dt);
+        return;
+    }
     white.Update(dt);
     black.Update(dt);
     HandleInput();
@@ -352,6 +356,7 @@ void Game::Update(float dt) {
     CheckCollisions();
     board.PurgeDead();
     CheckWinCondition();
+    UpdateParticles(dt);
 
     if (netMode == NetMode::HOST && netHost) {
         netHost->Poll();
@@ -462,7 +467,19 @@ void Game::HandleInput() {
 //  Piece update
 // ─────────────────────────────────────────────
 void Game::UpdatePieces(float dt) {
-    for (auto& p : board.pieces) if (!p->isDead) p->Update(dt);
+    for (auto& p : board.pieces) {
+        if (p->isDead) continue;
+        p->Update(dt);
+
+        // Pawn promotion — auto-queen on reaching the far rank
+        if (p->type == PieceType::PAWN && !p->isMoving && !p->isJumping) {
+            if ((p->color == PieceColor::Light && p->gridPos.y == 7) ||
+                (p->color == PieceColor::Dark  && p->gridPos.y == 0)) {
+                p->type    = PieceType::QUEEN;
+                p->hasMoved = true;
+            }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -471,6 +488,10 @@ void Game::UpdatePieces(float dt) {
 void Game::CheckCollisions() {
     auto& pcs = board.pieces;
 
+    // ── Moving-piece hitbox sweep ──────────────────────────────────────────
+    // A moving piece can kill any enemy piece it hits, AND any same-color piece
+    // that is also currently moving (friendly fire on moving pieces only).
+    // Static same-color pieces are always safe.
     for (int i = 0; i < (int)pcs.size(); i++) {
         Piece* a = pcs[i].get();
         if (a->isDead || a->isJumping || !a->isMoving) continue;
@@ -479,7 +500,9 @@ void Game::CheckCollisions() {
         for (int j = 0; j < (int)pcs.size(); j++) {
             if (i == j) continue;
             Piece* b = pcs[j].get();
-            if (b->isDead || b->isJumping || b->color == a->color) continue;
+            if (b->isDead || b->isJumping) continue;
+            // Friendly static pieces are untouchable
+            if (b->color == a->color && !b->isMoving) continue;
 
             float dx = aHit.x - b->worldPos.x;
             float dz = aHit.z - b->worldPos.z;
@@ -492,19 +515,32 @@ void Game::CheckCollisions() {
                 float ez = bHit.z - a->worldPos.z;
                 headOn = sqrtf(ex*ex + ez*ez) < Piece::HITBOX_RADIUS + Piece::HURTBOX_RADIUS;
             }
-            if (headOn) { a->isDead = b->isDead = true; }
-            else          b->isDead = true;
+            if (headOn) {
+                if (!a->isDead) { SpawnDeathParticles(a->worldPos); a->isDead = true; }
+                if (!b->isDead) { SpawnDeathParticles(b->worldPos); b->isDead = true; }
+                break;  // a is dead — no need to check more targets
+            } else {
+                if (!b->isDead) { SpawnDeathParticles(b->worldPos); b->isDead = true; }
+            }
         }
     }
 
+    // ── Knight landing sweep ───────────────────────────────────────────────
+    // Kills any piece in the landing zone, regardless of color, UNLESS it is
+    // a static friendly piece (which is safe).  This also fixes the bug where
+    // a piece moving through the landing square would end up sharing a grid
+    // position with the landed knight.
     for (auto& p : pcs) {
         if (p->isDead || !p->justLanded) continue;
         for (auto& other : pcs) {
-            if (other.get() == p.get() || other->isDead || other->color == p->color) continue;
+            if (other.get() == p.get() || other->isDead) continue;
+            // Static friendly pieces are safe
+            if (other->color == p->color && !other->isMoving && !other->isJumping) continue;
             float dx = other->worldPos.x - p->worldPos.x;
             float dz = other->worldPos.z - p->worldPos.z;
-            if (sqrtf(dx*dx + dz*dz) < Piece::HURTBOX_RADIUS * 1.6f)
-                other->isDead = true;
+            if (sqrtf(dx*dx + dz*dz) < Piece::HURTBOX_RADIUS * 1.6f) {
+                if (!other->isDead) { SpawnDeathParticles(other->worldPos); other->isDead = true; }
+            }
         }
     }
 }
@@ -620,6 +656,16 @@ void Game::DrawBoard() {
     DrawBox({4.f, 0.0f, 4.f}, 8.20f, 0.54f, 8.20f, woodDark); // inset darker fill
 
     // ── Tiles ────────────────────────────────
+    // Pre-compute which kings are in check so we can highlight their squares.
+    GridPos lightKingPos = {-1,-1}, darkKingPos = {-1,-1};
+    for (auto& p : board.pieces) {
+        if (p->isDead || p->type != PieceType::KING) continue;
+        if (p->color == PieceColor::Light) lightKingPos = p->gridPos;
+        else                                darkKingPos  = p->gridPos;
+    }
+    bool lightInCheck = (lightKingPos.x >= 0) && IsInCheck(PieceColor::Light);
+    bool darkInCheck  = (darkKingPos.x  >= 0) && IsInCheck(PieceColor::Dark);
+
     // Raised 0.03 above the border top so the rim is visible around the grid.
     for (int x = 0; x < 8; x++) {
         for (int y = 0; y < 8; y++) {
@@ -629,6 +675,10 @@ void Game::DrawBoard() {
                 col = {80, 200, 95, 255};
             if (selectedPiece && selectedPiece->gridPos == gp)
                 col = {220, 210, 65, 255};
+            // Check highlight overrides everything — king safety is most visible
+            if ((lightInCheck && gp == lightKingPos) ||
+                (darkInCheck  && gp == darkKingPos))
+                col = {220, 45, 45, 255};
             DrawBox({x + 0.5f, 0.22f, y + 0.5f}, 0.97f, 0.12f, 0.97f, col);
         }
     }
@@ -776,6 +826,80 @@ void Game::DrawUI() {
 }
 
 // ─────────────────────────────────────────────
+//  Check detection
+// ─────────────────────────────────────────────
+bool Game::IsInCheck(PieceColor color) const {
+    // Find the king of the given color
+    Piece* king = nullptr;
+    for (auto& p : board.pieces) {
+        if (!p->isDead && p->type == PieceType::KING && p->color == color) {
+            king = p.get();
+            break;
+        }
+    }
+    if (!king) return false;
+
+    // Check if any opponent piece has the king's square in its valid moves
+    PieceColor opp = (color == PieceColor::Light) ? PieceColor::Dark : PieceColor::Light;
+    for (auto& p : board.pieces) {
+        if (p->isDead || p->color != opp) continue;
+        for (auto& m : board.GetValidMoves(p.get()))
+            if (m == king->gridPos) return true;
+    }
+    return false;
+}
+
+// ─────────────────────────────────────────────
+//  Particle system
+// ─────────────────────────────────────────────
+void Game::SpawnDeathParticles(Vector3 pos) {
+    const int COUNT = 14;
+    for (int i = 0; i < COUNT; i++) {
+        Particle pt;
+        pt.pos = pos;
+        float angle = (float)i / (float)COUNT * 2.f * PI
+                    + GetRandomValue(0, 100) * 0.01f * PI;
+        float speed = 1.8f + GetRandomValue(0, 100) * 0.025f;
+        pt.vel = {
+            cosf(angle) * speed,
+            1.2f + GetRandomValue(0, 100) * 0.025f,
+            sinf(angle) * speed
+        };
+        pt.maxLife = 0.55f + GetRandomValue(0, 45) * 0.01f;
+        pt.life    = pt.maxLife;
+        particles.push_back(pt);
+    }
+}
+
+void Game::UpdateParticles(float dt) {
+    for (auto& pt : particles) {
+        pt.pos.x += pt.vel.x * dt;
+        pt.pos.y += pt.vel.y * dt;
+        pt.pos.z += pt.vel.z * dt;
+        pt.vel.y -= 7.f * dt;   // gravity
+        pt.life  -= dt;
+    }
+    particles.erase(
+        std::remove_if(particles.begin(), particles.end(),
+                       [](const Particle& p){ return p.life <= 0.f; }),
+        particles.end());
+}
+
+void Game::DrawParticles() {
+    for (auto& pt : particles) {
+        float t     = pt.life / pt.maxLife;          // 1 → 0
+        float r     = 0.07f * t;
+        auto  alpha = (unsigned char)(t * 230.f);
+        // Hot orange-red that cools toward dark red as it fades
+        Color col = {255,
+                     (unsigned char)(40.f + 80.f * t),
+                     20,
+                     alpha};
+        DrawSphere(pt.pos, r, col);
+    }
+}
+
+// ─────────────────────────────────────────────
 //  Draw  (called inside BeginTextureMode)
 // ─────────────────────────────────────────────
 void Game::Draw() {
@@ -793,6 +917,7 @@ void Game::Draw() {
 
         DrawBoard();
         DrawPieces();
+        DrawParticles();
     EndMode3D();
 
     DrawUI();

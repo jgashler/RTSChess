@@ -32,7 +32,7 @@ public:
     bool hasMoved  = false; // pawn first-move flag
 
     static constexpr float MOVE_SPEED     = 1.8f;  // world units / sec
-    static constexpr float JUMP_DURATION  = 0.65f; // seconds
+    static constexpr float JUMP_DURATION  = 1.3f;  // seconds (half speed)
     static constexpr float JUMP_HEIGHT    = 2.8f;
     static constexpr float HITBOX_RADIUS  = 0.22f;
     static constexpr float HURTBOX_RADIUS = 0.38f;
