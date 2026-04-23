@@ -17,6 +17,7 @@ constexpr uint8_t NET_FLAG_JUMPING   = 1 << 1;
 constexpr uint8_t NET_FLAG_DEAD      = 1 << 2;
 constexpr uint8_t NET_FLAG_HAS_MOVED = 1 << 3;
 constexpr uint8_t NET_FLAG_LANDED    = 1 << 4;
+constexpr uint8_t NET_FLAG_ARRIVED   = 1 << 5;  // sliding piece just reached its dest
 
 #pragma pack(push, 1)
 

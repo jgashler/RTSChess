@@ -25,11 +25,12 @@ public:
     GridPos targetGrid; // where it's heading
 
     Vector3 worldPos;   // smooth animated position
-    bool isMoving  = false;
-    bool isJumping = false; // knight arc
-    bool justLanded = false;
-    bool isDead    = false;
-    bool hasMoved  = false; // pawn first-move flag
+    bool isMoving   = false;
+    bool isJumping  = false; // knight arc
+    bool justLanded = false; // true for one frame after jump completes
+    bool justArrived= false; // true for one frame after slide completes
+    bool isDead     = false;
+    bool hasMoved   = false; // pawn first-move flag
 
     static constexpr float MOVE_SPEED     = 1.8f;  // world units / sec
     static constexpr float JUMP_DURATION  = 1.3f;  // seconds (half speed)

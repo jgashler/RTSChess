@@ -247,11 +247,12 @@ GameStatePacket Game::BuildStatePacket() const {
         s.color    = (uint8_t)p.color;
         s.id       = p.id;
         s.flags    = 0;
-        if (p.isMoving)   s.flags |= NET_FLAG_MOVING;
-        if (p.isJumping)  s.flags |= NET_FLAG_JUMPING;
-        if (p.isDead)     s.flags |= NET_FLAG_DEAD;
-        if (p.hasMoved)   s.flags |= NET_FLAG_HAS_MOVED;
-        if (p.justLanded) s.flags |= NET_FLAG_LANDED;
+        if (p.isMoving)    s.flags |= NET_FLAG_MOVING;
+        if (p.isJumping)   s.flags |= NET_FLAG_JUMPING;
+        if (p.isDead)      s.flags |= NET_FLAG_DEAD;
+        if (p.hasMoved)    s.flags |= NET_FLAG_HAS_MOVED;
+        if (p.justLanded)  s.flags |= NET_FLAG_LANDED;
+        if (p.justArrived) s.flags |= NET_FLAG_ARRIVED;
     }
     return pkt;
 }
@@ -268,11 +269,12 @@ void Game::ApplyNetState(const GameStatePacket& pkt) {
         p->worldPos   = { s.worldX, s.worldY, s.worldZ };
         p->gridPos    = { s.gridX,  s.gridY  };
         p->targetGrid = { s.targetX, s.targetY };
-        p->isMoving   = (s.flags & NET_FLAG_MOVING)    != 0;
-        p->isJumping  = (s.flags & NET_FLAG_JUMPING)   != 0;
-        p->isDead     = (s.flags & NET_FLAG_DEAD)       != 0;
-        p->hasMoved   = (s.flags & NET_FLAG_HAS_MOVED) != 0;
-        p->justLanded = (s.flags & NET_FLAG_LANDED)     != 0;
+        p->isMoving    = (s.flags & NET_FLAG_MOVING)    != 0;
+        p->isJumping   = (s.flags & NET_FLAG_JUMPING)   != 0;
+        p->isDead      = (s.flags & NET_FLAG_DEAD)       != 0;
+        p->hasMoved    = (s.flags & NET_FLAG_HAS_MOVED) != 0;
+        p->justLanded  = (s.flags & NET_FLAG_LANDED)     != 0;
+        p->justArrived = (s.flags & NET_FLAG_ARRIVED)    != 0;
     }
 }
 
@@ -526,30 +528,37 @@ void Game::CheckCollisions() {
     }
 
     // ── Knight landing sweep ───────────────────────────────────────────────
-    // Kills any piece at the landing square, whether by world-proximity OR by
-    // destination (the piece was heading to the same square).  Static friendly
-    // pieces are the only exception — they are always safe.
+    // Kills enemies (or moving friendlies) that are within the landing splash
+    // radius.  Does NOT preemptively kill pieces still heading toward the square;
+    // those pieces will handle it themselves when they arrive (see below).
     for (auto& p : pcs) {
         if (p->isDead || !p->justLanded) continue;
-        GridPos landPos = p->gridPos;   // where the knight landed
 
         for (auto& other : pcs) {
             if (other.get() == p.get() || other->isDead) continue;
-            // Static friendly pieces are untouchable
+            // Static friendly pieces are safe from the splash
             if (other->color == p->color && !other->isMoving && !other->isJumping) continue;
 
-            // Kill by world-proximity (enemy already on the square)
             float dx = other->worldPos.x - p->worldPos.x;
             float dz = other->worldPos.z - p->worldPos.z;
-            bool nearbyInWorld = sqrtf(dx*dx + dz*dz) < Piece::HURTBOX_RADIUS * 1.6f;
-
-            // Kill by destination (still en-route but heading to the same square)
-            bool headingHere = (other->isMoving || other->isJumping)
-                             && other->targetGrid == landPos;
-
-            if (nearbyInWorld || headingHere) {
+            if (sqrtf(dx*dx + dz*dz) < Piece::HURTBOX_RADIUS * 1.6f) {
                 if (!other->isDead) { SpawnDeathParticles(other->worldPos); other->isDead = true; }
             }
+        }
+    }
+
+    // ── Arrival sweep (second-to-arrive wins) ─────────────────────────────
+    // When any piece finishes moving (justArrived) or jumping (justLanded),
+    // it kills any piece already sitting statically at that exact grid square,
+    // regardless of color.  This implements the "you were here first, you lose"
+    // rule: the first piece to a contested square dies to whoever shows up next.
+    for (auto& p : pcs) {
+        if (p->isDead || (!p->justArrived && !p->justLanded)) continue;
+        for (auto& other : pcs) {
+            if (other.get() == p.get() || other->isDead) continue;
+            if (other->isMoving || other->isJumping) continue; // only static pieces
+            if (other->gridPos != p->gridPos) continue;        // must be on the same square
+            if (!other->isDead) { SpawnDeathParticles(other->worldPos); other->isDead = true; }
         }
     }
 }

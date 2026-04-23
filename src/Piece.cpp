@@ -53,7 +53,8 @@ void Piece::StartJump(GridPos dest) {
 }
 
 void Piece::Update(float dt) {
-    justLanded = false;
+    justLanded  = false;
+    justArrived = false;
 
     if (isJumping) {
         jumpTimer += dt;
@@ -78,10 +79,11 @@ void Piece::Update(float dt) {
         float dz   = target.z - worldPos.z;
         float dist = sqrtf(dx*dx + dz*dz);
         if (dist <= MOVE_SPEED * dt) {
-            worldPos = target;
-            gridPos  = targetGrid;
-            isMoving = false;
-            moveDir  = {0,0,0};
+            worldPos    = target;
+            gridPos     = targetGrid;
+            isMoving    = false;
+            justArrived = true;
+            moveDir     = {0,0,0};
         } else {
             worldPos.x += moveDir.x * MOVE_SPEED * dt;
             worldPos.z += moveDir.z * MOVE_SPEED * dt;
