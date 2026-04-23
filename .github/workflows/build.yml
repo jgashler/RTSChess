@@ -45,7 +45,7 @@ jobs:
 
       - name: Configure
         # Build a universal binary so it runs on both Intel and Apple Silicon Macs
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
       - name: Build
         run: cmake --build build --config Release
