@@ -17,7 +17,8 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(raylib)
 
 # ── mbedTLS ───────────────────────────────────────────────────────────────────
-# Fetch before libdatachannel so our targets exist when find_package runs.
+# Fetched before libdatachannel so the mbedtls/mbedcrypto/mbedx509 targets
+# exist when our FindMbedTLS.cmake runs inside libdatachannel's configure step.
 set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_DOCS     OFF CACHE BOOL "" FORCE)
@@ -29,25 +30,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(mbedtls)
 
-# CMAKE_FIND_PACKAGE_REDIRECTS_DIR (CMake ≥ 3.24) is consulted BEFORE any
-# Find<Package>.cmake module.  We write a tiny redirect that creates the
-# MbedTLS::* alias targets and sets MbedTLS_FOUND, so libdatachannel's
-# FindMbedTLS.cmake (which has a bug: calls check_symbol_exists without
-# including CheckSymbolExists) is never reached.
-set(_fpr "${CMAKE_BINARY_DIR}/fpredirects")
-file(MAKE_DIRECTORY "${_fpr}")
-file(WRITE "${_fpr}/MbedTLS.cmake"
-"set(MbedTLS_FOUND   TRUE)
-set(MbedTLS_VERSION \"3.6.0\")
-if(NOT TARGET MbedTLS::mbedtls)
-    add_library(MbedTLS::mbedtls    ALIAS mbedtls)
-    add_library(MbedTLS::mbedcrypto ALIAS mbedcrypto)
-    add_library(MbedTLS::mbedx509   ALIAS mbedx509)
-endif()
-")
-set(CMAKE_FIND_PACKAGE_REDIRECTS_DIR "${_fpr}")
-
 # ── libdatachannel ────────────────────────────────────────────────────────────
+# Prepend our cmake/ dir to CMAKE_MODULE_PATH so our FindMbedTLS.cmake is
+# found before libdatachannel's buggy one (which calls check_symbol_exists
+# without including CheckSymbolExists).  libdatachannel only appends its
+# cmake/Modules dir, so the prepended entry stays first in all child scopes.
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
 set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
 set(NO_MEDIA     ON CACHE BOOL "" FORCE)
 set(USE_MBEDTLS  ON CACHE BOOL "" FORCE)
