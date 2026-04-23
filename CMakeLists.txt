@@ -16,9 +16,8 @@ FetchContent_Declare(
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(raylib)
 
-# ── mbedTLS (fetch ourselves so it's self-contained — no system install) ─────
-# We fetch this BEFORE libdatachannel so we can create the MbedTLS::* targets
-# that libdatachannel's find_package(MbedTLS) looks for.
+# ── mbedTLS ───────────────────────────────────────────────────────────────────
+# Fetch before libdatachannel so our targets exist when find_package runs.
 set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_DOCS     OFF CACHE BOOL "" FORCE)
@@ -30,30 +29,25 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(mbedtls)
 
-# Create the namespaced alias targets BEFORE libdatachannel's find_package runs.
-# FindMbedTLS.cmake checks `if(NOT TARGET MbedTLS::mbedtls)` before creating
-# its own IMPORTED targets, so ours will be used instead.
+# CMAKE_FIND_PACKAGE_REDIRECTS_DIR (CMake ≥ 3.24) is consulted BEFORE any
+# Find<Package>.cmake module.  We write a tiny redirect that creates the
+# MbedTLS::* alias targets and sets MbedTLS_FOUND, so libdatachannel's
+# FindMbedTLS.cmake (which has a bug: calls check_symbol_exists without
+# including CheckSymbolExists) is never reached.
+set(_fpr "${CMAKE_BINARY_DIR}/fpredirects")
+file(MAKE_DIRECTORY "${_fpr}")
+file(WRITE "${_fpr}/MbedTLS.cmake"
+"set(MbedTLS_FOUND   TRUE)
+set(MbedTLS_VERSION \"3.6.0\")
 if(NOT TARGET MbedTLS::mbedtls)
     add_library(MbedTLS::mbedtls    ALIAS mbedtls)
-endif()
-if(NOT TARGET MbedTLS::mbedcrypto)
     add_library(MbedTLS::mbedcrypto ALIAS mbedcrypto)
-endif()
-if(NOT TARGET MbedTLS::mbedx509)
     add_library(MbedTLS::mbedx509   ALIAS mbedx509)
 endif()
+")
+set(CMAKE_FIND_PACKAGE_REDIRECTS_DIR "${_fpr}")
 
-# Pre-set the CACHE vars that FindMbedTLS.cmake uses so find_package passes
-# without searching for prebuilt .lib/.a files on disk.
-# The include dir points to our fetched source; the lib vars are set to
-# non-NOTFOUND strings (target names) which pass the empty-check in
-# find_package_handle_standard_args without requiring real file paths.
-set(MbedTLS_INCLUDE_DIR    "${mbedtls_SOURCE_DIR}/include" CACHE PATH     "" FORCE)
-set(MbedTLS_LIBRARY        "mbedtls"    CACHE FILEPATH "" FORCE)
-set(MbedTLS_Crypto_LIBRARY "mbedcrypto" CACHE FILEPATH "" FORCE)
-set(MbedTLS_X509_LIBRARY   "mbedx509"   CACHE FILEPATH "" FORCE)
-
-# ── libdatachannel ───────────────────────────────────────────────────────────
+# ── libdatachannel ────────────────────────────────────────────────────────────
 set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
 set(NO_MEDIA     ON CACHE BOOL "" FORCE)
 set(USE_MBEDTLS  ON CACHE BOOL "" FORCE)
