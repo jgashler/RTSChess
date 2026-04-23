@@ -22,6 +22,16 @@ FetchContent_MakeAvailable(raylib)
 set(ENABLE_TESTING  OFF CACHE BOOL "" FORCE)
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_DOCS     OFF CACHE BOOL "" FORCE)
+
+# libdatachannel's DTLS transport uses DTLS-SRTP symbols
+# (MBEDTLS_TLS_SRTP_*, mbedtls_ssl_conf_dtls_srtp_protection_profiles).
+# These are disabled by default in mbedTLS 3.x.  Enable them via the
+# officially-supported MBEDTLS_USER_CONFIG_FILE hook: mbedtls_config.h
+# includes this file at the end, so we can add defines without patching source.
+set(_mbed_user_cfg "${CMAKE_BINARY_DIR}/mbedtls_rtschess.h")
+file(WRITE "${_mbed_user_cfg}" "#define MBEDTLS_SSL_DTLS_SRTP\n")
+set(MBEDTLS_USER_CONFIG_FILE "${_mbed_user_cfg}" CACHE STRING "" FORCE)
+
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
