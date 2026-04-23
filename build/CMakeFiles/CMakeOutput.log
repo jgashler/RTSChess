@@ -1,0 +1,73 @@
+The system is: Windows - 10.0.26200 - AMD64
+Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+Compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/bin/Hostx86/x86/cl.exe 
+Build flags: 
+Id flags:  
+
+The output was:
+0
+Microsoft (R) C/C++ Optimizing Compiler Version 19.50.35729 for x86
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+CMakeCXXCompilerId.cpp
+Microsoft (R) Incremental Linker Version 14.50.35729.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+/out:CMakeCXXCompilerId.exe 
+CMakeCXXCompilerId.obj 
+
+
+Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.exe"
+
+Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.obj"
+
+The CXX compiler identification is MSVC, found in "C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/CMakeFiles/3.22.2/CompilerIdCXX/CMakeCXXCompilerId.exe"
+
+Detecting CXX compiler ABI info compiled with the following output:
+Change Dir: C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):nmake -f Makefile /nologo cmTC_3a09a\fast && 	"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\bin\HostX86\x86\nmake.exe"  -f CMakeFiles\cmTC_3a09a.dir\build.make /nologo -L                  CMakeFiles\cmTC_3a09a.dir\build
+Building CXX object CMakeFiles/cmTC_3a09a.dir/CMakeCXXCompilerABI.cpp.obj
+	"C:\Program Files\CMake\bin\cmake.exe" -E cmake_cl_compile_depends --dep-file=CMakeFiles\cmTC_3a09a.dir\CMakeCXXCompilerABI.cpp.obj.d --working-dir=C:\Users\jgash\Documents\ClaudeCode\RTSChess\build\CMakeFiles\CMakeTmp --filter-prefix="Note: including file: " -- C:\PROGRA~1\MICROS~4\18\COMMUN~1\VC\Tools\MSVC\1450~1.357\bin\Hostx86\x86\cl.exe @C:\Users\jgash\AppData\Local\Temp\nmB9D7.tmp
+CMakeCXXCompilerABI.cpp
+Linking CXX executable cmTC_3a09a.exe
+	"C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\cmTC_3a09a.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x86\rc.exe --mt=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x86\mt.exe --manifests -- C:\PROGRA~1\MICROS~4\18\COMMUN~1\VC\Tools\MSVC\1450~1.357\bin\Hostx86\x86\link.exe /nologo @CMakeFiles\cmTC_3a09a.dir\objects1.rsp @C:\Users\jgash\AppData\Local\Temp\nmBBCC.tmp
+
+
+
+Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+Compiler: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/bin/Hostx86/x86/cl.exe 
+Build flags: 
+Id flags:  
+
+The output was:
+0
+Microsoft (R) C/C++ Optimizing Compiler Version 19.50.35729 for x86
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+CMakeCCompilerId.c
+Microsoft (R) Incremental Linker Version 14.50.35729.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+/out:CMakeCCompilerId.exe 
+CMakeCCompilerId.obj 
+
+
+Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.exe"
+
+Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.obj"
+
+The C compiler identification is MSVC, found in "C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/CMakeFiles/3.22.2/CompilerIdC/CMakeCCompilerId.exe"
+
+Detecting C compiler ABI info compiled with the following output:
+Change Dir: C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):nmake -f Makefile /nologo cmTC_c53ee\fast && 	"C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\bin\HostX86\x86\nmake.exe"  -f CMakeFiles\cmTC_c53ee.dir\build.make /nologo -L                  CMakeFiles\cmTC_c53ee.dir\build
+Building C object CMakeFiles/cmTC_c53ee.dir/CMakeCCompilerABI.c.obj
+	"C:\Program Files\CMake\bin\cmake.exe" -E cmake_cl_compile_depends --dep-file=CMakeFiles\cmTC_c53ee.dir\CMakeCCompilerABI.c.obj.d --working-dir=C:\Users\jgash\Documents\ClaudeCode\RTSChess\build\CMakeFiles\CMakeTmp --filter-prefix="Note: including file: " -- C:\PROGRA~1\MICROS~4\18\COMMUN~1\VC\Tools\MSVC\1450~1.357\bin\Hostx86\x86\cl.exe @C:\Users\jgash\AppData\Local\Temp\nm134D.tmp
+CMakeCCompilerABI.c
+Linking C executable cmTC_c53ee.exe
+	"C:\Program Files\CMake\bin\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\cmTC_c53ee.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x86\rc.exe --mt=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x86\mt.exe --manifests -- C:\PROGRA~1\MICROS~4\18\COMMUN~1\VC\Tools\MSVC\1450~1.357\bin\Hostx86\x86\link.exe /nologo @CMakeFiles\cmTC_c53ee.dir\objects1.rsp @C:\Users\jgash\AppData\Local\Temp\nm14A5.tmp
+
+
+

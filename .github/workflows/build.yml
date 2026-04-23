@@ -1,0 +1,61 @@
+name: Build
+
+# Runs on every push to main, and can be triggered manually
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  # ── Windows ─────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: windows-deps-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: RTSChess-Windows
+          path: build/Release/RTSChess.exe
+
+  # ── macOS (universal: Intel + Apple Silicon) ─────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: macos-deps-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        # Build a universal binary so it runs on both Intel and Apple Silicon Macs
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Sign (ad-hoc)
+        # Ad-hoc signing lets macOS Gatekeeper allow the app via right-click → Open
+        run: codesign --force -s - build/RTSChess
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: RTSChess-macOS
+          path: build/RTSChess

@@ -1,0 +1,21 @@
+# ninja log v6
+15	234	7985943091334618	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-mkdir	5ef542545937e7f4
+15	234	7985943091334618	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-mkdir	5ef542545937e7f4
+236	73807	7985943827133865	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-download	d476d81f7001477b
+236	73807	7985943827133865	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-download	d476d81f7001477b
+73816	74102	7985943827332677	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-update	ca4aadf7696508c6
+73816	74102	7985943827332677	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-update	ca4aadf7696508c6
+74102	74217	7985943831212562	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-patch	f875e8bb78b9407a
+74102	74217	7985943831212562	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-patch	f875e8bb78b9407a
+74217	74325	7985943832323318	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-configure	b33998455c94267b
+74217	74325	7985943832323318	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-configure	b33998455c94267b
+74325	74428	7985943833356751	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-build	3cb0e5ab56acd346
+74325	74428	7985943833356751	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-build	3cb0e5ab56acd346
+74429	74523	7985943834308045	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-install	fe5dac0203abba6c
+74429	74523	7985943834308045	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-install	fe5dac0203abba6c
+74523	74624	7985943835297326	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-test	9495a97952cbc533
+74523	74624	7985943835297326	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-test	9495a97952cbc533
+74625	74760	7985943836671950	CMakeFiles/raylib-populate-complete	4d4aa4afe9d2fec7
+74625	74760	7985943836671950	raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-done	4d4aa4afe9d2fec7
+74625	74760	7985943836671950	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/CMakeFiles/raylib-populate-complete	4d4aa4afe9d2fec7
+74625	74760	7985943836671950	C:/Users/jgash/Documents/ClaudeCode/RTSChess/out/build/x64-Debug/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-done	4d4aa4afe9d2fec7

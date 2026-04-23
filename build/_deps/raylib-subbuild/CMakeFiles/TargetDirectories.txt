@@ -1,0 +1,3 @@
+C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate.dir
+C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/_deps/raylib-subbuild/CMakeFiles/edit_cache.dir
+C:/Users/jgash/Documents/ClaudeCode/RTSChess/build/_deps/raylib-subbuild/CMakeFiles/rebuild_cache.dir
