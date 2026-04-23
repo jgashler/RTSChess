@@ -1,86 +1,116 @@
-// Define these BEFORE any windows.h include to strip the macros that
-// conflict with raylib.  This file must NOT include Game.h / raylib.h.
+// rtc/rtc.hpp pulls in WinSock on Windows.  Define lean-headers first so it
+// doesn't conflict with anything — this file never includes raylib.h / Game.h.
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
-#  define NOGDI       // removes Rectangle (wingdi.h)
+#  define NOGDI
 #  define NOMINMAX
 #endif
 
 #include "NetHost.h"
-#include <enet/enet.h>   // brings in windows.h — no raylib here, so no conflict
+#include <rtc/rtc.hpp>
 #include <cstdio>
 #include <cstring>
 
-bool NetHost::GlobalInit() {
-    if (enet_initialize() != 0) {
-        printf("[ENet] Failed to initialize.\n");
-        return false;
-    }
+NetHost::~NetHost() { Shutdown(); }
+
+bool NetHost::Init() {
+    rtc::Configuration cfg;
+    // Google's free STUN server — only used to discover the public IP/port;
+    // actual game packets travel directly peer-to-peer.
+    cfg.iceServers.emplace_back("stun:stun.l.google.com:19302");
+
+    pc = std::make_shared<rtc::PeerConnection>(cfg);
+
+    // When all ICE candidates are gathered the local description is final.
+    // Store it then; that's what we show the user to copy & send.
+    pc->onGatheringStateChange([this](rtc::PeerConnection::GatheringState state) {
+        if (state != rtc::PeerConnection::GatheringState::Complete) return;
+        auto desc = pc->localDescription();
+        if (!desc) return;
+        std::lock_guard<std::mutex> lk(mtx);
+        pendingOffer = std::string(*desc);
+    });
+
+    pc->onStateChange([this](rtc::PeerConnection::State state) {
+        if (state == rtc::PeerConnection::State::Connected) {
+            std::lock_guard<std::mutex> lk(mtx);
+            pendingConnected = true;
+            connected        = true;
+        } else if (state == rtc::PeerConnection::State::Failed ||
+                   state == rtc::PeerConnection::State::Closed) {
+            std::lock_guard<std::mutex> lk(mtx);
+            connected = false;
+        }
+    });
+
+    // Host creates the data channel (the remote side receives it via onDataChannel).
+    dc = pc->createDataChannel("game");
+
+    dc->onMessage([this](rtc::message_variant data) {
+        if (!std::holds_alternative<rtc::binary>(data)) return;
+        auto& bin   = std::get<rtc::binary>(data);
+        auto* bytes = reinterpret_cast<const uint8_t*>(bin.data());
+        size_t len  = bin.size();
+        if (len < 1) return;
+
+        if ((PacketType)bytes[0] == PacketType::MOVE_REQUEST &&
+            len >= sizeof(MoveRequestPacket)) {
+            MoveRequestPacket req;
+            std::memcpy(&req, bytes, sizeof(req));
+            std::lock_guard<std::mutex> lk(mtx);
+            pendingMoves.push_back({ req.pieceId, req.destX, req.destY });
+        }
+    });
+
+    // Trigger offer generation + ICE gathering.
+    pc->setLocalDescription();
     return true;
 }
 
-void NetHost::GlobalShutdown() {
-    enet_deinitialize();
-}
-
-bool NetHost::Init(uint16_t port) {
-    ENetAddress addr;
-    addr.host = ENET_HOST_ANY;
-    addr.port = port;
-
-    host = enet_host_create(&addr, 1, 2, 0, 0);
-    if (!host) {
-        printf("[Host] Failed to create ENet host on port %d\n", port);
-        return false;
+void NetHost::SetAnswer(const std::string& answerSdp) {
+    if (!pc) return;
+    try {
+        pc->setRemoteDescription(rtc::Description(answerSdp, "answer"));
+    } catch (const std::exception& e) {
+        printf("[Host] SetAnswer error: %s\n", e.what());
     }
-    printf("[Host] Listening on port %d...\n", port);
-    return true;
 }
 
 void NetHost::Poll() {
-    if (!host) return;
-
-    ENetEvent ev;
-    while (enet_host_service(host, &ev, 0) > 0) {
-        switch (ev.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                peer = ev.peer;
-                printf("[Host] Client connected.\n");
-                break;
-
-            case ENET_EVENT_TYPE_RECEIVE: {
-                if (ev.packet->dataLength >= 1) {
-                    auto ptype = (PacketType)ev.packet->data[0];
-                    if (ptype == PacketType::MOVE_REQUEST &&
-                        ev.packet->dataLength >= sizeof(MoveRequestPacket)) {
-                        MoveRequestPacket req;
-                        std::memcpy(&req, ev.packet->data, sizeof(req));
-                        if (onMove) onMove(req.pieceId, req.destX, req.destY);
-                    }
-                }
-                enet_packet_destroy(ev.packet);
-                break;
-            }
-
-            case ENET_EVENT_TYPE_DISCONNECT:
-                printf("[Host] Client disconnected.\n");
-                peer = nullptr;
-                break;
-
-            default: break;
-        }
+    std::string            offer;
+    bool                   didConnect = false;
+    std::vector<MoveEvent> moves;
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        offer            = std::move(pendingOffer);
+        didConnect       = pendingConnected;
+        pendingConnected = false;
+        moves            = std::move(pendingMoves);
     }
+    if (!offer.empty()  && onOffer)     onOffer(offer);
+    if (didConnect      && onConnected) onConnected();
+    for (auto& m : moves)
+        if (onMove) onMove(m.id, m.x, m.y);
 }
 
 void NetHost::BroadcastState(const GameStatePacket& pkt) {
-    if (!host || !peer) return;
-    ENetPacket* ep = enet_packet_create(
-        &pkt, sizeof(pkt), ENET_PACKET_FLAG_UNSEQUENCED);
-    enet_peer_send(peer, 1, ep);
-    enet_host_flush(host);
+    if (!dc || !dc->isOpen()) return;
+    try {
+        rtc::binary bin(
+            reinterpret_cast<const std::byte*>(&pkt),
+            reinterpret_cast<const std::byte*>(&pkt) + sizeof(pkt));
+        dc->send(std::move(bin));
+    } catch (...) {}
+}
+
+bool NetHost::IsConnected() const {
+    std::lock_guard<std::mutex> lk(mtx);
+    return connected;
 }
 
 void NetHost::Shutdown() {
-    if (peer) { enet_peer_disconnect(peer, 0); peer = nullptr; }
-    if (host) { enet_host_destroy(host);        host = nullptr; }
+    if (dc) { try { dc->close(); } catch (...) {} dc.reset(); }
+    if (pc) { try { pc->close(); } catch (...) {} pc.reset(); }
+    std::lock_guard<std::mutex> lk(mtx);
+    connected = false;
 }

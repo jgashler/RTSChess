@@ -21,13 +21,24 @@ public:
     void Update(float dt);
     void Draw();
 
-    // Networking — called from main before Init()
-    void SetNetMode(NetMode mode, const char* address = nullptr, uint16_t port = 7777);
+    // ── Networking ────────────────────────────────────────────────────────
+    // Call SetNetMode before Init().  For CLIENT mode, `offerSdp` is the
+    // host's offer string (pasted by the user).
+    void SetNetMode(NetMode mode, const char* offerSdp = nullptr, uint16_t port = 7777);
 
-    // Called by NetHost when a move request arrives from the client
+    // WebRTC signaling helpers — called from the menu loop in main.cpp.
+    // PollNet() must be called every frame while in the menu to process
+    // libdatachannel callbacks on the main thread.
+    void        PollNet();
+    std::string GetOffer()  const;          // HOST:   offer SDP when ready
+    void        SetAnswer(const std::string& sdp);  // HOST:   feed remote answer
+    std::string GetAnswer() const;          // CLIENT: answer SDP when ready
+    bool        IsNetConnected() const;     // true once P2P link is up
+
+    // Called by NetHost callback when a move request arrives from the client
     void ExecuteMoveRequest(uint8_t pieceId, GridPos dest);
 
-    // Called by NetClient when a state packet arrives from the server
+    // Called by NetClient callback when a state packet arrives from the host
     void ApplyNetState(const GameStatePacket& pkt);
 
 private:
@@ -41,11 +52,14 @@ private:
     std::vector<GridPos> validMoves;
 
     // --- networking ---
-    NetMode   netMode    = NetMode::STANDALONE;
+    NetMode    netMode    = NetMode::STANDALONE;
     PieceColor localColor = PieceColor::Light;  // which side this instance plays
     std::unique_ptr<NetHost>   netHost;
     std::unique_ptr<NetClient> netClient;
-    float netBroadcastTimer = 0.f;
+    float       netBroadcastTimer = 0.f;
+    std::string offerSdp;        // HOST: generated offer SDP (filled via callback)
+    std::string answerSdp;       // CLIENT: generated answer SDP (filled via callback)
+    bool        netConnected = false;
 
     GameStatePacket BuildStatePacket() const;
 

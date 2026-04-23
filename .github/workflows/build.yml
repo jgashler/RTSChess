@@ -1,6 +1,5 @@
 name: Build
 
-# Runs on every push to main, and can be triggered manually
 on:
   push:
     branches: [ main, master ]
@@ -20,7 +19,12 @@ jobs:
           key: windows-deps-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        # OpenSSL is pre-installed on windows-latest at Program Files\OpenSSL
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL"
 
       - name: Build
         run: cmake --build build --config Release
@@ -44,14 +48,18 @@ jobs:
           key: macos-deps-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        # Build a universal binary so it runs on both Intel and Apple Silicon Macs
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        # brew's OpenSSL is not on the default CMake search path; point to it.
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          -DOPENSSL_ROOT_DIR=$(brew --prefix openssl)
 
       - name: Build
         run: cmake --build build --config Release
 
       - name: Sign (ad-hoc)
-        # Ad-hoc signing lets macOS Gatekeeper allow the app via right-click → Open
         run: codesign --force -s - build/RTSChess
 
       - name: Upload

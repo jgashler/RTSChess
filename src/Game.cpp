@@ -170,8 +170,11 @@ void Game::GenerateBgNoise() {
 Game::Game()  = default;
 Game::~Game() = default;   // defined here where NetHost/NetClient are complete
 
-void Game::SetNetMode(NetMode mode, const char* address, uint16_t port) {
-    netMode = mode;
+void Game::SetNetMode(NetMode mode, const char* offerSdp_, uint16_t /*port*/) {
+    netMode      = mode;
+    netConnected = false;
+    offerSdp.clear();
+    answerSdp.clear();
     netHost.reset();
     netClient.reset();
 
@@ -181,15 +184,41 @@ void Game::SetNetMode(NetMode mode, const char* address, uint16_t port) {
         netHost->SetMoveCallback([this](uint8_t id, int x, int y) {
             ExecuteMoveRequest(id, {x, y});
         });
-        netHost->Init(port);
+        netHost->SetOfferCallback([this](const std::string& sdp) {
+            offerSdp = sdp;
+        });
+        netHost->SetConnectedCallback([this]() {
+            netConnected = true;
+        });
+        netHost->Init();
+
     } else if (mode == NetMode::CLIENT) {
         localColor = PieceColor::Dark;
         netClient  = std::make_unique<NetClient>();
         netClient->SetStateCallback([this](const GameStatePacket& pkt) {
             ApplyNetState(pkt);
         });
-        netClient->Connect(address, port);
+        netClient->SetAnswerCallback([this](const std::string& sdp) {
+            answerSdp = sdp;
+        });
+        netClient->SetConnectedCallback([this]() {
+            netConnected = true;
+        });
+        if (offerSdp_) netClient->SetOffer(offerSdp_);
     }
+}
+
+void Game::PollNet() {
+    if (netHost)   netHost->Poll();
+    if (netClient) netClient->Poll();
+}
+
+std::string Game::GetOffer()  const { return offerSdp;    }
+std::string Game::GetAnswer() const { return answerSdp;   }
+bool Game::IsNetConnected()   const { return netConnected; }
+
+void Game::SetAnswer(const std::string& sdp) {
+    if (netHost) netHost->SetAnswer(sdp);
 }
 
 GameStatePacket Game::BuildStatePacket() const {
@@ -321,13 +350,13 @@ void Game::Update(float dt) {
     CheckWinCondition();
 
     if (netMode == NetMode::HOST && netHost) {
-        // Receive move requests from client
         netHost->Poll();
-        // Broadcast authoritative state at 20 Hz
-        netBroadcastTimer += dt;
-        if (netBroadcastTimer >= 0.05f) {
-            netBroadcastTimer = 0.f;
-            netHost->BroadcastState(BuildStatePacket());
+        if (netHost->IsConnected()) {
+            netBroadcastTimer += dt;
+            if (netBroadcastTimer >= 0.05f) {
+                netBroadcastTimer = 0.f;
+                netHost->BroadcastState(BuildStatePacket());
+            }
         }
     }
 }
