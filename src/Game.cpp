@@ -526,19 +526,28 @@ void Game::CheckCollisions() {
     }
 
     // ── Knight landing sweep ───────────────────────────────────────────────
-    // Kills any piece in the landing zone, regardless of color, UNLESS it is
-    // a static friendly piece (which is safe).  This also fixes the bug where
-    // a piece moving through the landing square would end up sharing a grid
-    // position with the landed knight.
+    // Kills any piece at the landing square, whether by world-proximity OR by
+    // destination (the piece was heading to the same square).  Static friendly
+    // pieces are the only exception — they are always safe.
     for (auto& p : pcs) {
         if (p->isDead || !p->justLanded) continue;
+        GridPos landPos = p->gridPos;   // where the knight landed
+
         for (auto& other : pcs) {
             if (other.get() == p.get() || other->isDead) continue;
-            // Static friendly pieces are safe
+            // Static friendly pieces are untouchable
             if (other->color == p->color && !other->isMoving && !other->isJumping) continue;
+
+            // Kill by world-proximity (enemy already on the square)
             float dx = other->worldPos.x - p->worldPos.x;
             float dz = other->worldPos.z - p->worldPos.z;
-            if (sqrtf(dx*dx + dz*dz) < Piece::HURTBOX_RADIUS * 1.6f) {
+            bool nearbyInWorld = sqrtf(dx*dx + dz*dz) < Piece::HURTBOX_RADIUS * 1.6f;
+
+            // Kill by destination (still en-route but heading to the same square)
+            bool headingHere = (other->isMoving || other->isJumping)
+                             && other->targetGrid == landPos;
+
+            if (nearbyInWorld || headingHere) {
                 if (!other->isDead) { SpawnDeathParticles(other->worldPos); other->isDead = true; }
             }
         }
@@ -698,7 +707,9 @@ void Game::DrawPiece(const Piece& p) {
     Color base = PieceColors(p, rim);
 
     Vector3 wp  = p.worldPos;
-    float   by  = wp.y + 0.05f;   // board surface
+    // Tile top = centre(0.22) + half-height(0.06) = 0.28.
+    // worldPos.y == 0 at rest, so add 0.28 to sit flush on the surface.
+    float   by  = wp.y + 0.28f;
 
     // Selection ring
     if (&p == selectedPiece)
@@ -772,7 +783,7 @@ void Game::DrawPiece(const Piece& p) {
     // Red hitbox dot for moving pieces
     if (p.isMoving) {
         Vector3 h = p.GetHitboxPos();
-        DrawSphere({h.x, h.y+0.08f, h.z}, 0.07f, {255,60,60,220});
+        DrawSphere({h.x, h.y + 0.36f, h.z}, 0.07f, {255,60,60,220});
     }
 }
 
@@ -853,6 +864,7 @@ bool Game::IsInCheck(PieceColor color) const {
 //  Particle system
 // ─────────────────────────────────────────────
 void Game::SpawnDeathParticles(Vector3 pos) {
+    pos.y += 0.28f;   // worldPos.y==0 is the simulation floor; add board-surface offset
     const int COUNT = 14;
     for (int i = 0; i < COUNT; i++) {
         Particle pt;
