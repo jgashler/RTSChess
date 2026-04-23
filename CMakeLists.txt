@@ -20,6 +20,7 @@ FetchContent_MakeAvailable(raylib)
 # NO_WEBSOCKET and NO_MEDIA trim ~50% of the build we don't need.
 set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
 set(NO_MEDIA     ON CACHE BOOL "" FORCE)
+set(USE_MBEDTLS  ON CACHE BOOL "" FORCE)   # static TLS — no OpenSSL DLLs to ship
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git

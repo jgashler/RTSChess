@@ -19,12 +19,10 @@ jobs:
           key: windows-deps-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        # OpenSSL is pre-installed on windows-latest at Program Files\OpenSSL
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-          -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL"
 
       - name: Build
         run: cmake --build build --config Release
@@ -48,13 +46,11 @@ jobs:
           key: macos-deps-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        # brew's OpenSSL is not on the default CMake search path; point to it.
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-          -DOPENSSL_ROOT_DIR=$(brew --prefix openssl)
 
       - name: Build
         run: cmake --build build --config Release
