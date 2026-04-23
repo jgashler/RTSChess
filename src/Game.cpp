@@ -124,7 +124,10 @@ void Game::Init() {
     selectedPiece = nullptr;
     validMoves.clear();
 
-    camera.position   = { 4.0f, 10.0f, -5.0f };
+    // Host (Light) sits on the negative-Z side; Client (Dark) on the positive-Z side.
+    bool isDark       = (localColor == PieceColor::Dark);
+    camera.position   = isDark ? Vector3{ 4.0f, 10.0f, 13.0f }
+                               : Vector3{ 4.0f, 10.0f, -5.0f };
     camera.target     = { 4.0f,  0.0f,  4.0f };
     camera.up         = { 0.0f,  1.0f,  0.0f };
     camera.fovy       = 42.0f;
@@ -317,7 +320,8 @@ void Game::UpdateCamera(float dt) {
     //   azimuth  = atan2(-7.5, 0) = -π/2
     const float r      = 13.45f;
     const float baseEl = 0.834f;
-    const float baseAz = -PI / 2.0f;
+    // Dark player sits on the positive-Z side, so rotate 180° around Y.
+    const float baseAz = (localColor == PieceColor::Dark) ? PI / 2.0f : -PI / 2.0f;
 
     float theta = baseEl + dEl;   // elevation angle from horizontal
     float phi   = baseAz + dAz;   // azimuth angle around Y axis
