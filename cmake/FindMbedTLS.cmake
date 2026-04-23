@@ -21,10 +21,18 @@ set(MbedTLS_INCLUDE_DIRS "${mbedtls_SOURCE_DIR}/include")
 set(MbedTLS_FOUND        TRUE)
 set(MBEDTLS_FOUND        TRUE)
 
-# Create the namespaced targets libdatachannel links against.
+# Create every namespaced target variant libdatachannel may link against.
+# v0.21.0 uses MbedTLS::MbedTLS (capital); older versions use lowercase.
+if(NOT TARGET MbedTLS::MbedTLS)
+    add_library(MbedTLS::MbedTLS    ALIAS mbedtls)   # capital — v0.21+
+endif()
 if(NOT TARGET MbedTLS::mbedtls)
-    add_library(MbedTLS::mbedtls    ALIAS mbedtls)
+    add_library(MbedTLS::mbedtls    ALIAS mbedtls)   # lowercase — older
+endif()
+if(NOT TARGET MbedTLS::mbedcrypto)
     add_library(MbedTLS::mbedcrypto ALIAS mbedcrypto)
+endif()
+if(NOT TARGET MbedTLS::mbedx509)
     add_library(MbedTLS::mbedx509   ALIAS mbedx509)
 endif()
 
