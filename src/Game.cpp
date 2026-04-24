@@ -370,7 +370,10 @@ void Game::Update(float dt) {
         return;
     }
 
-    // STANDALONE or HOST: run full simulation
+    // STANDALONE or HOST: process any incoming client messages first so
+    // restart requests (and future packets) are handled even after a win.
+    if (netMode == NetMode::HOST && netHost) netHost->Poll();
+
     if (state != GameState::PLAYING) {
         UpdateParticles(dt);
         return;
@@ -393,7 +396,6 @@ void Game::Update(float dt) {
     // Broadcast BEFORE PurgeDead so the packet still contains isDead=true entries
     // that tell the client to play its death particles and remove the piece.
     if (netMode == NetMode::HOST && netHost) {
-        netHost->Poll();
         if (netHost->IsConnected()) {
             bool anyDead = (state != GameState::PLAYING); // win counts as "urgent"
             for (auto& p : board.pieces) if (p->isDead) { anyDead = true; break; }
