@@ -7,8 +7,9 @@
 // ─────────────────────────────────────────────
 
 enum class PacketType : uint8_t {
-    MOVE_REQUEST = 0,   // client → server
-    GAME_STATE   = 1,   // server → both clients
+    MOVE_REQUEST  = 0,   // client → host
+    GAME_STATE    = 1,   // host   → both
+    RESTART_REQ   = 2,   // client → host: request game restart
 };
 
 // Bit flags packed into PieceNetState::flags
@@ -21,7 +22,12 @@ constexpr uint8_t NET_FLAG_ARRIVED   = 1 << 5;  // sliding piece just reached it
 
 #pragma pack(push, 1)
 
-// ── client → server ──────────────────────────
+// ── client → host: ask host to restart ───────
+struct RestartRequestPacket {
+    PacketType type = PacketType::RESTART_REQ;
+};
+
+// ── client → host ─────────────────────────────
 struct MoveRequestPacket {
     PacketType type   = PacketType::MOVE_REQUEST;
     uint8_t    pieceId;       // stable piece id (0–31)

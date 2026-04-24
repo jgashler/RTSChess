@@ -59,6 +59,9 @@ bool NetHost::Init() {
             std::memcpy(&req, bytes, sizeof(req));
             std::lock_guard<std::mutex> lk(mtx);
             pendingMoves.push_back({ req.pieceId, req.destX, req.destY });
+        } else if ((PacketType)bytes[0] == PacketType::RESTART_REQ) {
+            std::lock_guard<std::mutex> lk(mtx);
+            pendingRestart = true;
         }
     });
 
@@ -78,17 +81,21 @@ void NetHost::SetAnswer(const std::string& answerSdp) {
 
 void NetHost::Poll() {
     std::string            offer;
-    bool                   didConnect = false;
+    bool                   didConnect  = false;
+    bool                   didRestart  = false;
     std::vector<MoveEvent> moves;
     {
         std::lock_guard<std::mutex> lk(mtx);
         offer            = std::move(pendingOffer);
         didConnect       = pendingConnected;
         pendingConnected = false;
+        didRestart       = pendingRestart;
+        pendingRestart   = false;
         moves            = std::move(pendingMoves);
     }
     if (!offer.empty()  && onOffer)     onOffer(offer);
     if (didConnect      && onConnected) onConnected();
+    if (didRestart      && onRestart)   onRestart();
     for (auto& m : moves)
         if (onMove) onMove(m.id, m.x, m.y);
 }

@@ -30,10 +30,12 @@ public:
     // PollNet() must be called every frame while in the menu to process
     // libdatachannel callbacks on the main thread.
     void        PollNet();
-    std::string GetOffer()  const;          // HOST:   offer SDP when ready
-    void        SetAnswer(const std::string& sdp);  // HOST:   feed remote answer
-    std::string GetAnswer() const;          // CLIENT: answer SDP when ready
-    bool        IsNetConnected() const;     // true once P2P link is up
+    std::string GetOffer()   const;          // HOST:   offer SDP when ready
+    void        SetAnswer(const std::string& sdp);   // HOST:   feed remote answer
+    std::string GetAnswer()  const;          // CLIENT: answer SDP when ready
+    bool        IsNetConnected() const;      // true once P2P link is up
+    NetMode     GetNetMode() const { return netMode; }
+    void        SendRestartRequest();        // CLIENT: ask host to restart
 
     // Called by NetHost callback when a move request arrives from the client
     void ExecuteMoveRequest(uint8_t pieceId, GridPos dest);

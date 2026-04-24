@@ -25,6 +25,7 @@ public:
     void Poll();
 
     void SendMoveRequest(uint8_t pieceId, int destX, int destY);
+    void SendRestartRequest();
 
     void SetStateCallback    (StateCallback     cb) { onState     = std::move(cb); }
     void SetAnswerCallback   (AnswerCallback    cb) { onAnswer    = std::move(cb); }

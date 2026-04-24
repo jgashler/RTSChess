@@ -193,6 +193,9 @@ void Game::SetNetMode(NetMode mode, const char* offerSdp_, uint16_t /*port*/) {
         netHost->SetMoveCallback([this](uint8_t id, int x, int y) {
             ExecuteMoveRequest(id, {x, y});
         });
+        netHost->SetRestartCallback([this]() {
+            Init();   // client requested restart — host obliges and resets
+        });
         netHost->SetOfferCallback([this](const std::string& sdp) {
             offerSdp = sdp;
         });
@@ -228,6 +231,10 @@ bool Game::IsNetConnected()   const { return netConnected; }
 
 void Game::SetAnswer(const std::string& sdp) {
     if (netHost) netHost->SetAnswer(sdp);
+}
+
+void Game::SendRestartRequest() {
+    if (netClient) netClient->SendRestartRequest();
 }
 
 GameStatePacket Game::BuildStatePacket() const {
@@ -380,14 +387,11 @@ void Game::Update(float dt) {
         validMoves.clear();
     }
 
-    board.PurgeDead();
-    // Run CheckWinCondition BEFORE broadcast so the win state ships in the same
-    // packet that carries the kill.  Without this the host returns early next
-    // frame (state != PLAYING) and the client never sees WHITE_WINS/BLACK_WINS.
+    // Detect wins while dead pieces are still present in the list.
     CheckWinCondition();
 
-    // Broadcast: force an immediate send when pieces died this frame so the
-    // client sees isDead=true and the (possibly updated) game state without delay.
+    // Broadcast BEFORE PurgeDead so the packet still contains isDead=true entries
+    // that tell the client to play its death particles and remove the piece.
     if (netMode == NetMode::HOST && netHost) {
         netHost->Poll();
         if (netHost->IsConnected()) {
@@ -400,6 +404,9 @@ void Game::Update(float dt) {
             }
         }
     }
+
+    // NOW purge dead pieces (after the packet was sent).
+    board.PurgeDead();
 
     UpdateParticles(dt);
 }

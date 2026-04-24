@@ -17,6 +17,7 @@ namespace rtc {
 class NetHost {
 public:
     using MoveCallback      = std::function<void(uint8_t pieceId, int x, int y)>;
+    using RestartCallback   = std::function<void()>;
     using OfferCallback     = std::function<void(const std::string& sdp)>;
     using ConnectedCallback = std::function<void()>;
 
@@ -32,6 +33,7 @@ public:
     void BroadcastState(const GameStatePacket& pkt);
 
     void SetMoveCallback     (MoveCallback      cb) { onMove      = std::move(cb); }
+    void SetRestartCallback  (RestartCallback   cb) { onRestart   = std::move(cb); }
     void SetOfferCallback    (OfferCallback     cb) { onOffer     = std::move(cb); }
     void SetConnectedCallback(ConnectedCallback cb) { onConnected = std::move(cb); }
 
@@ -48,6 +50,7 @@ private:
     std::shared_ptr<rtc::DataChannel>    dc;
 
     MoveCallback      onMove;
+    RestartCallback   onRestart;
     OfferCallback     onOffer;
     ConnectedCallback onConnected;
 
@@ -57,5 +60,6 @@ private:
     std::string            pendingOffer;
     bool                   pendingConnected = false;
     std::vector<MoveEvent> pendingMoves;
+    bool                   pendingRestart   = false;
     bool                   connected        = false;
 };

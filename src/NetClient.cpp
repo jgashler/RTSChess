@@ -100,6 +100,17 @@ void NetClient::SendMoveRequest(uint8_t pieceId, int destX, int destY) {
     } catch (...) {}
 }
 
+void NetClient::SendRestartRequest() {
+    if (!dc || !dc->isOpen()) return;
+    RestartRequestPacket pkt;
+    try {
+        rtc::binary bin(
+            reinterpret_cast<const std::byte*>(&pkt),
+            reinterpret_cast<const std::byte*>(&pkt) + sizeof(pkt));
+        dc->send(std::move(bin));
+    } catch (...) {}
+}
+
 bool NetClient::IsConnected() const {
     std::lock_guard<std::mutex> lk(mtx);
     return connected;

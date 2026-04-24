@@ -281,7 +281,16 @@ int main() {
         }
 
         // ── IN_GAME ─────────────────────────────────────────────────────────
-        if (IsKeyPressed(KEY_R)) game.Init();
+        if (IsKeyPressed(KEY_R)) {
+            // HOST / STANDALONE: restart directly.
+            // CLIENT: ask the host to restart; the host will call Init() which
+            //         increments resetGen, broadcasts it, and the client mirrors.
+            if (game.GetNetMode() == NetMode::CLIENT) {
+                game.SendRestartRequest();
+            } else {
+                game.Init();
+            }
+        }
         if (IsKeyPressed(KEY_ESCAPE)) {
             menu = MenuState::MAIN;
             continue;
