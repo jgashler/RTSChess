@@ -6,9 +6,7 @@
 #include <functional>
 #include <cstring>
 
-// ── UPDATE THIS after deploying the Cloudflare Worker ────────────────────────
-// e.g. "rtschess-signaling.yourname.workers.dev"
-static const char* WORKER_HOST = "rtschess-signaling.YOUR_SUBDOMAIN.workers.dev";
+static const char* WORKER_HOST = "rtschess-signaling.jgashler44.workers.dev";
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Platform HTTP ─────────────────────────────────────────────────────────────
