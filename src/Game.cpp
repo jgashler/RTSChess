@@ -266,9 +266,10 @@ void Game::ApplyNetState(const GameStatePacket& pkt) {
         const PieceNetState& s = pkt.pieces[i];
         Piece* p = board.GetPieceById(s.id);
         if (!p) continue;
-        p->worldPos   = { s.worldX, s.worldY, s.worldZ };
-        p->gridPos    = { s.gridX,  s.gridY  };
-        p->targetGrid = { s.targetX, s.targetY };
+        p->worldPos    = { s.worldX, s.worldY, s.worldZ };
+        p->gridPos     = { s.gridX,  s.gridY  };
+        p->targetGrid  = { s.targetX, s.targetY };
+        p->type        = (PieceType)s.type;   // keeps promotion (pawn→queen) in sync
         p->isMoving    = (s.flags & NET_FLAG_MOVING)    != 0;
         p->isJumping   = (s.flags & NET_FLAG_JUMPING)   != 0;
         p->isDead      = (s.flags & NET_FLAG_DEAD)       != 0;
@@ -749,8 +750,17 @@ void Game::DrawBoard() {
             if ((lightInCheck && gp == lightKingPos) ||
                 (darkInCheck  && gp == darkKingPos))
                 col = {220, 45, 45, 255};          // check warning
-            if (IsValidDest(gp))
-                col = {80, 200, 95, 255};           // valid destination (beats check)
+            if (IsValidDest(gp)) {
+                // Green = can afford to move now; yellow = valid but waiting for mana
+                bool canAfford = false;
+                if (selectedPiece) {
+                    const Player& pl = (selectedPiece->color == PieceColor::Light)
+                                       ? white : black;
+                    canAfford = pl.mana >= (float)selectedPiece->ManaCost();
+                }
+                col = canAfford ? Color{80, 200, 95, 255}   // green  — ready
+                                : Color{210, 170, 40, 255};  // yellow — waiting
+            }
             if (selectedPiece && selectedPiece->gridPos == gp)
                 col = {220, 210, 65, 255};          // selected piece
             DrawBox({x + 0.5f, 0.22f, y + 0.5f}, 0.97f, 0.12f, 0.97f, col);

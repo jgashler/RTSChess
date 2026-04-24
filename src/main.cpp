@@ -9,15 +9,14 @@
 // JOIN_SETUP  — accept pasted offer, show generated answer, wait
 enum class MenuState { MAIN, HOST_SETUP, JOIN_SETUP, IN_GAME };
 
-// ── Small UI helper: draw a long string clipped to maxChars + "…" ──────────
-static void DrawSdpPreview(const std::string& sdp, int x, int y, int fontSize, Color col) {
-    const int MAX = 52;
-    if ((int)sdp.size() <= MAX) {
-        DrawText(sdp.c_str(), x, y, fontSize, col);
-    } else {
-        std::string s = sdp.substr(0, MAX) + "...";
-        DrawText(s.c_str(), x, y, fontSize, col);
-    }
+// ── Draw a rounded status pill: e.g. "● Offer ready  (412 chars)" ──────────
+static void DrawStatusPill(const char* label, int chars, int x, int y, Color col) {
+    char buf[80];
+    if (chars > 0)
+        snprintf(buf, sizeof(buf), "%s  (%d chars)", label, chars);
+    else
+        snprintf(buf, sizeof(buf), "%s", label);
+    DrawText(buf, x, y, 18, col);
 }
 
 int main() {
@@ -148,37 +147,44 @@ int main() {
             // ── Draw ────────────────────────────────────────────────────────
             BeginDrawing();
                 ClearBackground(BG);
-                DrawText("Host a Game", cx - 120, 60, 36, TITLE);
+                DrawText("Host a Game", cx - 110, 50, 36, TITLE);
 
                 if (connecting) {
-                    DrawText("Connecting...", cx - 120, 300, 28, WARN);
-                    DrawText("Waiting for peer-to-peer link", cx - 190, 344, 22, DIM);
-                    DrawText("[Esc] Cancel", cx - 70, 420, 20, DIM);
+                    DrawText("Connecting...", cx - 85, 290, 28, WARN);
+                    DrawText("Waiting for peer-to-peer link", cx - 165, 330, 20, DIM);
+                    DrawText("[Esc]  Cancel", cx - 65, 500, 18, DIM);
 
                 } else if (genSdp.empty()) {
-                    DrawText("Generating connection offer...", cx - 200, 300, 24, DIM);
-                    DrawText("(takes a few seconds)", cx - 130, 334, 18, DIM);
-                    DrawText("[Esc] Back", cx - 60, 420, 20, DIM);
+                    DrawText("Generating your Offer Code...", cx - 170, 290, 22, DIM);
+                    DrawText("(this takes a few seconds)", cx - 140, 320, 16, DIM);
+                    DrawText("[Esc]  Back", cx - 55, 500, 18, DIM);
 
                 } else {
-                    // Step 1 — show offer
-                    DrawText("Step 1: Copy this offer and send it to your friend",
-                             cx - 290, 130, 20, WHITE);
-                    DrawSdpPreview(genSdp, cx - 290, 160, 14, HINT);
-                    const char* copyLabel = sdpCopied ? "Copied!" : "[Ctrl+C] Copy offer";
-                    DrawText(copyLabel, cx - 290, 184, 18,
-                             sdpCopied ? Color{100,255,120,255} : WARN);
+                    // Step 1 — copy offer
+                    DrawText("Step 1", cx - 240, 130, 14, DIM);
+                    DrawText("Copy your Offer Code and send it to your friend.",
+                             cx - 240, 150, 20, WHITE);
+                    DrawStatusPill("Offer Code ready",
+                                   (int)genSdp.size(), cx - 240, 182,
+                                   Color{140,255,160,255});
+                    if (sdpCopied)
+                        DrawText("Copied!  \xE2\x9C\x93", cx - 240, 210, 18, Color{100,255,120,255});
+                    else
+                        DrawText("[Ctrl+C]  Copy Offer Code", cx - 240, 210, 18, WARN);
 
                     // Step 2 — paste answer
-                    DrawText("Step 2: Paste your friend's answer (Ctrl+V)",
-                             cx - 290, 240, 20, WHITE);
+                    DrawText("Step 2", cx - 240, 280, 14, DIM);
+                    DrawText("Paste your friend's Answer Code, then press Enter.",
+                             cx - 240, 300, 20, WHITE);
                     if (pasteSdp.empty()) {
-                        DrawText("Waiting for paste...", cx - 290, 270, 18, DIM);
+                        DrawText("[Ctrl+V]  Paste Answer Code", cx - 240, 330, 18, DIM);
                     } else {
-                        DrawSdpPreview(pasteSdp, cx - 290, 270, 14, HINT);
-                        DrawText("[Enter] Connect", cx - 290, 300, 20, WARN);
+                        DrawStatusPill("Answer Code pasted",
+                                       (int)pasteSdp.size(), cx - 240, 330,
+                                       Color{140,255,160,255});
+                        DrawText("[Enter]  Connect", cx - 240, 358, 18, WARN);
                     }
-                    DrawText("[Esc] Back", cx - 60, 420, 20, DIM);
+                    DrawText("[Esc]  Back", cx - 55, 500, 18, DIM);
                 }
             EndDrawing();
             continue;
@@ -233,35 +239,42 @@ int main() {
             // ── Draw ────────────────────────────────────────────────────────
             BeginDrawing();
                 ClearBackground(BG);
-                DrawText("Join a Game", cx - 110, 60, 36, TITLE);
+                DrawText("Join a Game", cx - 105, 50, 36, TITLE);
 
                 if (!connecting) {
-                    // Step 1 — paste offer
-                    DrawText("Step 1: Paste the host's offer (Ctrl+V)",
-                             cx - 270, 180, 20, WHITE);
+                    // Step 1 — paste host offer
+                    DrawText("Step 1", cx - 240, 130, 14, DIM);
+                    DrawText("Paste the host's Offer Code, then press Enter.",
+                             cx - 240, 150, 20, WHITE);
                     if (pasteSdp.empty()) {
-                        DrawText("Waiting for paste...", cx - 270, 210, 18, DIM);
+                        DrawText("[Ctrl+V]  Paste Offer Code", cx - 240, 182, 18, DIM);
                     } else {
-                        DrawSdpPreview(pasteSdp, cx - 270, 210, 14, HINT);
-                        DrawText("[Enter] Process offer", cx - 270, 240, 20, WARN);
+                        DrawStatusPill("Offer Code pasted",
+                                       (int)pasteSdp.size(), cx - 240, 182,
+                                       Color{140,255,160,255});
+                        DrawText("[Enter]  Process Offer", cx - 240, 210, 18, WARN);
                     }
-                    DrawText("[Esc] Back", cx - 60, 420, 20, DIM);
+                    DrawText("[Esc]  Back", cx - 55, 500, 18, DIM);
 
                 } else if (genSdp.empty()) {
-                    DrawText("Generating answer...", cx - 140, 290, 24, DIM);
-                    DrawText("(takes a few seconds)", cx - 130, 324, 18, DIM);
+                    DrawText("Generating your Answer Code...", cx - 170, 290, 22, DIM);
+                    DrawText("(this takes a few seconds)", cx - 140, 320, 16, DIM);
 
                 } else {
-                    // Step 2 — show answer
-                    DrawText("Step 2: Copy this answer and send it to the host",
-                             cx - 290, 150, 20, WHITE);
-                    DrawSdpPreview(genSdp, cx - 290, 180, 14, HINT);
-                    const char* copyLabel = sdpCopied ? "Copied!" : "[Ctrl+C] Copy answer";
-                    DrawText(copyLabel, cx - 290, 204, 18,
-                             sdpCopied ? Color{100,255,120,255} : WARN);
+                    // Step 2 — copy answer
+                    DrawText("Step 2", cx - 240, 130, 14, DIM);
+                    DrawText("Copy your Answer Code and send it to the host.",
+                             cx - 240, 150, 20, WHITE);
+                    DrawStatusPill("Answer Code ready",
+                                   (int)genSdp.size(), cx - 240, 182,
+                                   Color{140,255,160,255});
+                    if (sdpCopied)
+                        DrawText("Copied!  \xE2\x9C\x93", cx - 240, 210, 18, Color{100,255,120,255});
+                    else
+                        DrawText("[Ctrl+C]  Copy Answer Code", cx - 240, 210, 18, WARN);
 
-                    DrawText("Waiting for host to accept...", cx - 190, 280, 20, DIM);
-                    DrawText("[Esc] Cancel", cx - 70, 420, 20, DIM);
+                    DrawText("Waiting for host to connect...", cx - 240, 300, 20, DIM);
+                    DrawText("[Esc]  Cancel", cx - 65, 500, 18, DIM);
                 }
             EndDrawing();
             continue;
