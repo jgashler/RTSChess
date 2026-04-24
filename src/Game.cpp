@@ -125,8 +125,9 @@ void Game::Init() {
     board.Init();
     white         = Player{ PieceColor::Light };
     black         = Player{ PieceColor::Dark };
-    state         = GameState::PLAYING;
-    selectedPiece = nullptr;
+    state            = GameState::PLAYING;
+    pendingWinState  = GameState::PLAYING;
+    selectedPiece    = nullptr;
     validMoves.clear();
     particles.clear();
 
@@ -380,7 +381,8 @@ void Game::Update(float dt) {
     }
     white.Update(dt);
     black.Update(dt);
-    HandleInput();
+    // Block new input once a win is decided — let pieces finish animating first.
+    if (pendingWinState == GameState::PLAYING) HandleInput();
     UpdatePieces(dt);
     CheckCollisions();
 
@@ -392,6 +394,15 @@ void Game::Update(float dt) {
 
     // Detect wins while dead pieces are still present in the list.
     CheckWinCondition();
+
+    // If a king just died, wait until every piece has finished moving before
+    // showing the win screen — so the killing piece slides all the way home.
+    if (pendingWinState != GameState::PLAYING) {
+        bool anyMoving = false;
+        for (auto& p : board.pieces)
+            if (!p->isDead && (p->isMoving || p->isJumping)) { anyMoving = true; break; }
+        if (!anyMoving) state = pendingWinState;
+    }
 
     // Broadcast BEFORE PurgeDead so the packet still contains isDead=true entries
     // that tell the client to play its death particles and remove the piece.
@@ -654,14 +665,15 @@ void Game::CheckCollisions() {
 //  Win condition
 // ─────────────────────────────────────────────
 void Game::CheckWinCondition() {
+    if (pendingWinState != GameState::PLAYING) return; // already decided
     bool wk = false, bk = false;
     for (auto& p : board.pieces) {
         if (p->isDead) continue;
         if (p->type == PieceType::KING)
             (p->color == PieceColor::Light ? wk : bk) = true;
     }
-    if (!wk) state = GameState::BLACK_WINS;
-    if (!bk) state = GameState::WHITE_WINS;
+    if (!wk) pendingWinState = GameState::BLACK_WINS;
+    if (!bk) pendingWinState = GameState::WHITE_WINS;
 }
 
 // ─────────────────────────────────────────────

@@ -48,7 +48,8 @@ private:
     Board     board;
     Player    white{ PieceColor::Light };
     Player    black{ PieceColor::Dark };
-    GameState state = GameState::PLAYING;
+    GameState state            = GameState::PLAYING;
+    GameState pendingWinState  = GameState::PLAYING; // set when a king dies; applied once all pieces stop
 
     Piece*               selectedPiece = nullptr;
     std::vector<GridPos> validMoves;
