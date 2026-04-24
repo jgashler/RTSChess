@@ -1,0 +1,7 @@
+name            = "rtschess-signaling"
+main            = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id      = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"

@@ -66,11 +66,17 @@ add_executable(RTSChess
     src/Game.cpp
     src/NetHost.cpp
     src/NetClient.cpp
+    src/Signaling.cpp
 )
 
 target_link_libraries(RTSChess PRIVATE raylib datachannel-static)
 target_include_directories(RTSChess PRIVATE src ${libdatachannel_SOURCE_DIR}/include)
 
 if(WIN32)
-    target_link_libraries(RTSChess PRIVATE ws2_32 winmm)
+    # ws2_32/winmm for raylib+libdatachannel; winhttp for Signaling.cpp
+    target_link_libraries(RTSChess PRIVATE ws2_32 winmm winhttp)
+else()
+    # Use the system libcurl (available on macOS and most Linux distros)
+    find_package(CURL REQUIRED)
+    target_link_libraries(RTSChess PRIVATE CURL::libcurl)
 endif()

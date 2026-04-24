@@ -1,23 +1,12 @@
 #include "Game.h"
+#include "Signaling.h"
 #include "raylib.h"
 #include <cstring>
 #include <cstdio>
+#include <cctype>
 #include <string>
 
-// ── Menu states ────────────────────────────────────────────────────────────
-// HOST_SETUP  — generate WebRTC offer, show it, accept pasted answer
-// JOIN_SETUP  — accept pasted offer, show generated answer, wait
 enum class MenuState { MAIN, HOST_SETUP, JOIN_SETUP, IN_GAME };
-
-// ── Draw a rounded status pill: e.g. "● Offer ready  (412 chars)" ──────────
-static void DrawStatusPill(const char* label, int chars, int x, int y, Color col) {
-    char buf[80];
-    if (chars > 0)
-        snprintf(buf, sizeof(buf), "%s  (%d chars)", label, chars);
-    else
-        snprintf(buf, sizeof(buf), "%s", label);
-    DrawText(buf, x, y, 18, col);
-}
 
 int main() {
     const int SCREEN_W = 1280;
@@ -34,19 +23,21 @@ int main() {
     Game      game;
     MenuState menu = MenuState::MAIN;
 
-    // ── WebRTC signaling state (used in HOST_SETUP / JOIN_SETUP) ───────────
-    std::string genSdp;       // SDP we generated (offer or answer)
-    std::string pasteSdp;     // SDP the user pasted
-    bool        connecting  = false;   // offer/answer exchanged, waiting for link
-    bool        sdpCopied   = false;
-    float       copiedTimer = 0.f;
+    // ── Setup state shared between HOST_SETUP and JOIN_SETUP ──────────────
+    std::string roomCode;       // 6-char code (generated for host, typed for joiner)
+    std::string codeInput;      // raw text the joiner is typing
+    std::string statusMsg;      // one-line status shown to user
+    bool        sigBusy    = false;  // a background signaling call is in flight
+    bool        connecting = false;  // WebRTC handshake in progress
+    float       pollTimer  = 0.f;    // seconds until next /answer poll
 
-    auto resetSignal = [&]() {
-        genSdp.clear();
-        pasteSdp.clear();
-        connecting  = false;
-        sdpCopied   = false;
-        copiedTimer = 0.f;
+    auto resetSetup = [&]() {
+        roomCode.clear();
+        codeInput.clear();
+        statusMsg.clear();
+        sigBusy    = false;
+        connecting = false;
+        pollTimer  = 0.f;
     };
 
     auto blitRT = [&]() {
@@ -59,24 +50,44 @@ int main() {
     };
 
     // Colours
-    const Color BG    = {20, 15, 35, 255};
+    const Color BG    = {20,  15,  35,  255};
     const Color TITLE = {200, 100, 255, 255};
-    const Color HINT  = {180, 255, 180, 255};
     const Color DIM   = {130, 130, 130, 255};
-    const Color WARN  = {255, 200, 80, 255};
+    const Color WARN  = {255, 200,  80, 255};
+    const Color GREEN = {140, 255, 160, 255};
+
+    // Draw the 6 code cells (big letters, used on both screens)
+    auto drawCodeCells = [&](const std::string& code, int cx, int y) {
+        const int cellW = 64, cellH = 72, gap = 10;
+        int totalW = 6 * cellW + 5 * gap;
+        int startX = cx - totalW / 2;
+        for (int i = 0; i < 6; i++) {
+            int x = startX + i * (cellW + gap);
+            DrawRectangle(x, y, cellW, cellH, Color{40, 30, 60, 255});
+            DrawRectangleLines(x, y, cellW, cellH, Color{100, 60, 160, 255});
+            if (i < (int)code.size()) {
+                char ch[2] = {code[i], '\0'};
+                DrawText(ch, x + 18, y + 14, 44, WHITE);
+            }
+        }
+    };
 
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
         int   cx = SCREEN_W / 2;
 
+        Signaling::Poll();  // dispatch any background HTTP results
+
         // ── MAIN ────────────────────────────────────────────────────────────
         if (menu == MenuState::MAIN) {
             if (IsKeyPressed(KEY_H)) {
-                resetSignal();
+                resetSetup();
                 game.SetNetMode(NetMode::HOST);
+                statusMsg = "Generating connection data...";
                 menu = MenuState::HOST_SETUP;
             } else if (IsKeyPressed(KEY_J)) {
-                resetSignal();
+                resetSetup();
+                statusMsg = "Enter the room code from your friend:";
                 menu = MenuState::JOIN_SETUP;
             } else if (IsKeyPressed(KEY_S) || IsKeyPressed(KEY_ENTER)) {
                 game.SetNetMode(NetMode::STANDALONE);
@@ -99,46 +110,54 @@ int main() {
 
         // ── HOST_SETUP ──────────────────────────────────────────────────────
         // Flow:
-        //   1. Wait for offer generation  (genSdp empty)
-        //   2. Show offer + accept paste  (genSdp ready, !connecting)
-        //   3. Connecting…                (connecting == true)
-        //   4. Connected → IN_GAME
+        //  1. Wait for WebRTC offer to be generated.
+        //  2. POST offer → Worker → receive room code.
+        //  3. Show room code; poll /answer every 2 s.
+        //  4. Answer arrives → SetAnswer → wait for P2P link → IN_GAME.
         if (menu == MenuState::HOST_SETUP) {
             game.PollNet();
 
-            // Fetch generated offer when ready
-            if (genSdp.empty()) genSdp = game.GetOffer();
-
-            // Once the answer is submitted, wait for WebRTC handshake
-            if (connecting) {
-                if (game.IsNetConnected()) {
-                    game.Init();
-                    menu = MenuState::IN_GAME;
+            // Step 1 → 2: offer ready, post it
+            if (roomCode.empty() && !sigBusy) {
+                std::string offer = game.GetOffer();
+                if (!offer.empty()) {
+                    sigBusy   = true;
+                    statusMsg = "Registering room with server...";
+                    Signaling::AsyncPostOffer(offer, [&](std::string code) {
+                        sigBusy = false;
+                        if (code.empty()) {
+                            statusMsg = "Could not reach server. Check your connection.";
+                        } else {
+                            roomCode  = code;
+                            statusMsg = "Share this code with your friend:";
+                        }
+                    });
                 }
             }
 
-            // Paste detection (Ctrl+V)
-            bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-            if (ctrl && IsKeyPressed(KEY_V)) {
-                const char* clip = GetClipboardText();
-                if (clip && clip[0] != '\0') pasteSdp = clip;
+            // Step 3: poll for answer every 2 seconds
+            if (!roomCode.empty() && !connecting && !sigBusy) {
+                pollTimer -= dt;
+                if (pollTimer <= 0.f) {
+                    pollTimer = 2.f;
+                    sigBusy   = true;
+                    Signaling::AsyncPollAnswer(roomCode, [&](std::string answer) {
+                        sigBusy = false;
+                        if (!answer.empty()) {
+                            game.SetAnswer(answer);
+                            connecting = true;
+                            statusMsg  = "Opponent found! Connecting...";
+                        }
+                    });
+                }
             }
 
-            // Copy offer to clipboard
-            if (!genSdp.empty() && ctrl && IsKeyPressed(KEY_C)) {
-                SetClipboardText(genSdp.c_str());
-                sdpCopied   = true;
-                copiedTimer = 2.f;
-            }
-            if (sdpCopied) { copiedTimer -= dt; if (copiedTimer <= 0) sdpCopied = false; }
-
-            // Submit answer → start connecting
-            if (!connecting && !pasteSdp.empty() && IsKeyPressed(KEY_ENTER)) {
-                game.SetAnswer(pasteSdp);
-                connecting = true;
+            // Step 4: connected
+            if (connecting && game.IsNetConnected()) {
+                game.Init();
+                menu = MenuState::IN_GAME;
             }
 
-            // Back
             if (IsKeyPressed(KEY_ESCAPE)) {
                 game.SetNetMode(NetMode::STANDALONE);
                 menu = MenuState::MAIN;
@@ -147,90 +166,95 @@ int main() {
             // ── Draw ────────────────────────────────────────────────────────
             BeginDrawing();
                 ClearBackground(BG);
-                DrawText("Host a Game", cx - 110, 50, 36, TITLE);
+                DrawText("Host a Game", cx - 110, 60, 36, TITLE);
+                DrawText(statusMsg.c_str(),
+                         cx - MeasureText(statusMsg.c_str(), 20) / 2,
+                         220, 20, DIM);
 
-                if (connecting) {
-                    DrawText("Connecting...", cx - 85, 290, 28, WARN);
-                    DrawText("Waiting for peer-to-peer link", cx - 165, 330, 20, DIM);
-                    DrawText("[Esc]  Cancel", cx - 65, 500, 18, DIM);
+                if (!roomCode.empty()) {
+                    drawCodeCells(roomCode, cx, 270);
 
-                } else if (genSdp.empty()) {
-                    DrawText("Generating your Offer Code...", cx - 170, 290, 22, DIM);
-                    DrawText("(this takes a few seconds)", cx - 140, 320, 16, DIM);
-                    DrawText("[Esc]  Back", cx - 55, 500, 18, DIM);
+                    // Copy-to-clipboard convenience
+                    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+                    if (ctrl && IsKeyPressed(KEY_C)) SetClipboardText(roomCode.c_str());
+                    DrawText("[Ctrl+C] Copy code",
+                             cx - MeasureText("[Ctrl+C] Copy code", 18) / 2,
+                             360, 18, WARN);
 
-                } else {
-                    // Step 1 — copy offer
-                    DrawText("Step 1", cx - 240, 130, 14, DIM);
-                    DrawText("Copy your Offer Code and send it to your friend.",
-                             cx - 240, 150, 20, WHITE);
-                    DrawStatusPill("Offer Code ready",
-                                   (int)genSdp.size(), cx - 240, 182,
-                                   Color{140,255,160,255});
-                    if (sdpCopied)
-                        DrawText("Copied!  \xE2\x9C\x93", cx - 240, 210, 18, Color{100,255,120,255});
-                    else
-                        DrawText("[Ctrl+C]  Copy Offer Code", cx - 240, 210, 18, WARN);
-
-                    // Step 2 — paste answer
-                    DrawText("Step 2", cx - 240, 280, 14, DIM);
-                    DrawText("Paste your friend's Answer Code, then press Enter.",
-                             cx - 240, 300, 20, WHITE);
-                    if (pasteSdp.empty()) {
-                        DrawText("[Ctrl+V]  Paste Answer Code", cx - 240, 330, 18, DIM);
+                    if (connecting) {
+                        DrawText("Connecting...",
+                                 cx - MeasureText("Connecting...", 22) / 2,
+                                 420, 22, GREEN);
                     } else {
-                        DrawStatusPill("Answer Code pasted",
-                                       (int)pasteSdp.size(), cx - 240, 330,
-                                       Color{140,255,160,255});
-                        DrawText("[Enter]  Connect", cx - 240, 358, 18, WARN);
+                        DrawText("Waiting for opponent to join...",
+                                 cx - MeasureText("Waiting for opponent to join...", 18) / 2,
+                                 420, 18, DIM);
                     }
-                    DrawText("[Esc]  Back", cx - 55, 500, 18, DIM);
                 }
+
+                DrawText("[Esc] Back", cx - MeasureText("[Esc] Back", 18) / 2, 620, 18, DIM);
             EndDrawing();
             continue;
         }
 
         // ── JOIN_SETUP ──────────────────────────────────────────────────────
         // Flow:
-        //   1. Paste host offer          (pasteSdp empty)
-        //   2. Enter → SetNetMode(CLIENT, offer) → wait for answer generation
-        //   3. Show answer + copy        (genSdp ready)
-        //   4. Connecting automatically while host pastes our answer
-        //   5. Connected → IN_GAME
+        //  1. User types 6-char room code, presses Enter.
+        //  2. GET /join/{code} → fetch offer SDP.
+        //  3. Feed offer to WebRTC → wait for answer SDP.
+        //  4. POST /answer/{code} with answer SDP.
+        //  5. Wait for P2P link → IN_GAME.
         if (menu == MenuState::JOIN_SETUP) {
             game.PollNet();
 
-            // Fetch generated answer when ready
-            if (genSdp.empty()) genSdp = game.GetAnswer();
+            // Step 1: keyboard input for the room code
+            if (roomCode.empty() && !sigBusy) {
+                int c = GetCharPressed();
+                while (c > 0) {
+                    if (codeInput.size() < 6 && (isalpha(c) || isdigit(c)))
+                        codeInput += (char)toupper(c);
+                    c = GetCharPressed();
+                }
+                if (IsKeyPressed(KEY_BACKSPACE) && !codeInput.empty())
+                    codeInput.pop_back();
 
-            // Auto-transition when connected
-            if (game.IsNetConnected()) {
+                if (IsKeyPressed(KEY_ENTER) && (int)codeInput.size() == 6) {
+                    sigBusy   = true;
+                    statusMsg = "Looking up room...";
+                    Signaling::AsyncGetOffer(codeInput, [&](std::string offer) {
+                        sigBusy = false;
+                        if (offer.empty()) {
+                            statusMsg = "Room not found. Check the code and try again.";
+                        } else {
+                            roomCode  = codeInput;
+                            statusMsg = "Room found! Generating connection data...";
+                            game.SetNetMode(NetMode::CLIENT, offer.c_str());
+                        }
+                    });
+                }
+            }
+
+            // Step 3 → 4: answer ready, post it
+            if (!roomCode.empty() && !connecting && !sigBusy) {
+                std::string answer = game.GetAnswer();
+                if (!answer.empty()) {
+                    sigBusy   = true;
+                    statusMsg = "Sending connection data to host...";
+                    Signaling::AsyncPostAnswer(roomCode, answer, [&](bool ok) {
+                        sigBusy    = false;
+                        connecting = ok;
+                        statusMsg  = ok ? "Waiting for host to connect..."
+                                        : "Failed to reach server. Try again.";
+                    });
+                }
+            }
+
+            // Step 5: connected
+            if (connecting && game.IsNetConnected()) {
                 game.Init();
                 menu = MenuState::IN_GAME;
             }
 
-            // Paste detection
-            bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-            if (ctrl && IsKeyPressed(KEY_V)) {
-                const char* clip = GetClipboardText();
-                if (clip && clip[0] != '\0') pasteSdp = clip;
-            }
-
-            // Submit offer → triggers answer generation
-            if (!connecting && !pasteSdp.empty() && IsKeyPressed(KEY_ENTER)) {
-                game.SetNetMode(NetMode::CLIENT, pasteSdp.c_str());
-                connecting = true;
-            }
-
-            // Copy answer to clipboard
-            if (!genSdp.empty() && ctrl && IsKeyPressed(KEY_C)) {
-                SetClipboardText(genSdp.c_str());
-                sdpCopied   = true;
-                copiedTimer = 2.f;
-            }
-            if (sdpCopied) { copiedTimer -= dt; if (copiedTimer <= 0) sdpCopied = false; }
-
-            // Back
             if (IsKeyPressed(KEY_ESCAPE)) {
                 game.SetNetMode(NetMode::STANDALONE);
                 menu = MenuState::MAIN;
@@ -239,59 +263,42 @@ int main() {
             // ── Draw ────────────────────────────────────────────────────────
             BeginDrawing();
                 ClearBackground(BG);
-                DrawText("Join a Game", cx - 105, 50, 36, TITLE);
+                DrawText("Join a Game", cx - 105, 60, 36, TITLE);
+                DrawText(statusMsg.c_str(),
+                         cx - MeasureText(statusMsg.c_str(), 20) / 2,
+                         220, 20, DIM);
 
-                if (!connecting) {
-                    // Step 1 — paste host offer
-                    DrawText("Step 1", cx - 240, 130, 14, DIM);
-                    DrawText("Paste the host's Offer Code, then press Enter.",
-                             cx - 240, 150, 20, WHITE);
-                    if (pasteSdp.empty()) {
-                        DrawText("[Ctrl+V]  Paste Offer Code", cx - 240, 182, 18, DIM);
-                    } else {
-                        DrawStatusPill("Offer Code pasted",
-                                       (int)pasteSdp.size(), cx - 240, 182,
-                                       Color{140,255,160,255});
-                        DrawText("[Enter]  Process Offer", cx - 240, 210, 18, WARN);
-                    }
-                    DrawText("[Esc]  Back", cx - 55, 500, 18, DIM);
+                // Show typed code (or confirmed code once fetched)
+                const std::string& displayCode = roomCode.empty() ? codeInput : roomCode;
+                drawCodeCells(displayCode, cx, 270);
 
-                } else if (genSdp.empty()) {
-                    DrawText("Generating your Answer Code...", cx - 170, 290, 22, DIM);
-                    DrawText("(this takes a few seconds)", cx - 140, 320, 16, DIM);
-
+                if (roomCode.empty() && !sigBusy) {
+                    DrawText("Type the 6-letter code, then press Enter",
+                             cx - MeasureText("Type the 6-letter code, then press Enter", 18) / 2,
+                             370, 18, WARN);
+                } else if (connecting) {
+                    DrawText("Connecting...",
+                             cx - MeasureText("Connecting...", 22) / 2,
+                             370, 22, GREEN);
                 } else {
-                    // Step 2 — copy answer
-                    DrawText("Step 2", cx - 240, 130, 14, DIM);
-                    DrawText("Copy your Answer Code and send it to the host.",
-                             cx - 240, 150, 20, WHITE);
-                    DrawStatusPill("Answer Code ready",
-                                   (int)genSdp.size(), cx - 240, 182,
-                                   Color{140,255,160,255});
-                    if (sdpCopied)
-                        DrawText("Copied!  \xE2\x9C\x93", cx - 240, 210, 18, Color{100,255,120,255});
-                    else
-                        DrawText("[Ctrl+C]  Copy Answer Code", cx - 240, 210, 18, WARN);
-
-                    DrawText("Waiting for host to connect...", cx - 240, 300, 20, DIM);
-                    DrawText("[Esc]  Cancel", cx - 65, 500, 18, DIM);
+                    DrawText(statusMsg.empty() ? "Working..." : "",
+                             cx, 370, 18, DIM);
                 }
+
+                DrawText("[Esc] Back", cx - MeasureText("[Esc] Back", 18) / 2, 620, 18, DIM);
             EndDrawing();
             continue;
         }
 
         // ── IN_GAME ─────────────────────────────────────────────────────────
         if (IsKeyPressed(KEY_R)) {
-            // HOST / STANDALONE: restart directly.
-            // CLIENT: ask the host to restart; the host will call Init() which
-            //         increments resetGen, broadcasts it, and the client mirrors.
-            if (game.GetNetMode() == NetMode::CLIENT) {
+            if (game.GetNetMode() == NetMode::CLIENT)
                 game.SendRestartRequest();
-            } else {
+            else
                 game.Init();
-            }
         }
         if (IsKeyPressed(KEY_ESCAPE)) {
+            game.SetNetMode(NetMode::STANDALONE);
             menu = MenuState::MAIN;
             continue;
         }
