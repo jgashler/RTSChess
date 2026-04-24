@@ -59,7 +59,9 @@ private:
     float       netBroadcastTimer = 0.f;
     std::string offerSdp;        // HOST: generated offer SDP (filled via callback)
     std::string answerSdp;       // CLIENT: generated answer SDP (filled via callback)
-    bool        netConnected = false;
+    bool        netConnected  = false;
+    uint8_t     netResetGen   = 0;     // HOST: incremented on restart; CLIENT: tracks last seen
+    bool        hasInitialized= false; // prevents counting the very first Init()
 
     GameStatePacket BuildStatePacket() const;
 

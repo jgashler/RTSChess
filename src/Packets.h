@@ -43,6 +43,7 @@ struct PieceNetState {
 struct GameStatePacket {
     PacketType    type       = PacketType::GAME_STATE;
     uint8_t       gameState;    // GameState enum cast to uint8_t
+    uint8_t       resetGen;     // incremented each time the host restarts; client mirrors
     float         whiteMana;
     float         blackMana;
     uint8_t       pieceCount;   // always 32 (dead pieces included, flag set)

@@ -117,6 +117,11 @@ void Game::DrawBox(Vector3 pos, float w, float h, float d, Color col) const {
 //  Init
 // ─────────────────────────────────────────────
 void Game::Init() {
+    // Signal the client that a restart happened (skip the very first Init so
+    // the client's initial state matches without triggering a spurious restart).
+    if (hasInitialized && netMode == NetMode::HOST) netResetGen++;
+    hasInitialized = true;
+
     board.Init();
     white         = Player{ PieceColor::Light };
     black         = Player{ PieceColor::Dark };
@@ -229,6 +234,7 @@ GameStatePacket Game::BuildStatePacket() const {
     GameStatePacket pkt{};
     pkt.type       = PacketType::GAME_STATE;
     pkt.gameState  = (uint8_t)state;
+    pkt.resetGen   = netResetGen;
     pkt.whiteMana  = white.mana;
     pkt.blackMana  = black.mana;
     pkt.pieceCount = (uint8_t)board.pieces.size();
@@ -258,7 +264,14 @@ GameStatePacket Game::BuildStatePacket() const {
 }
 
 void Game::ApplyNetState(const GameStatePacket& pkt) {
-    state       = (GameState)pkt.gameState;
+    // If the host restarted, mirror that before applying anything else.
+    if (pkt.resetGen != netResetGen) {
+        netResetGen = pkt.resetGen;
+        Init();   // resets board/state; networking config is untouched
+        return;   // this packet's piece data is for the fresh game; next packet syncs it
+    }
+
+    state       = (GameState)pkt.gameState;  // propagates WHITE_WINS / BLACK_WINS
     white.mana  = pkt.whiteMana;
     black.mana  = pkt.blackMana;
 
@@ -367,12 +380,18 @@ void Game::Update(float dt) {
         validMoves.clear();
     }
 
-    // Broadcast BEFORE purging so the client sees isDead=true on killed pieces.
-    // Also force an immediate send on the frame pieces die (don't wait for timer).
+    board.PurgeDead();
+    // Run CheckWinCondition BEFORE broadcast so the win state ships in the same
+    // packet that carries the kill.  Without this the host returns early next
+    // frame (state != PLAYING) and the client never sees WHITE_WINS/BLACK_WINS.
+    CheckWinCondition();
+
+    // Broadcast: force an immediate send when pieces died this frame so the
+    // client sees isDead=true and the (possibly updated) game state without delay.
     if (netMode == NetMode::HOST && netHost) {
         netHost->Poll();
         if (netHost->IsConnected()) {
-            bool anyDead = false;
+            bool anyDead = (state != GameState::PLAYING); // win counts as "urgent"
             for (auto& p : board.pieces) if (p->isDead) { anyDead = true; break; }
             netBroadcastTimer += dt;
             if (netBroadcastTimer >= 0.05f || anyDead) {
@@ -382,8 +401,6 @@ void Game::Update(float dt) {
         }
     }
 
-    board.PurgeDead();
-    CheckWinCondition();
     UpdateParticles(dt);
 }
 
@@ -414,7 +431,11 @@ GridPos Game::GetMouseGrid() const {
                               Vector3Scale(up,    rayView.y)), fwd));
 
     if (fabsf(rayWorld.y) < 0.0001f) return {-1,-1};
-    float t = -camera.position.y / rayWorld.y;
+    // Intersect with the tile top surface (y=0.28), not the world floor (y=0).
+    // At shallow camera angles the ~0.28 offset shifts the hit point by nearly
+    // a full tile on the far side of the board, making far squares unclickable.
+    constexpr float BOARD_SURF_Y = 0.28f;
+    float t = (BOARD_SURF_Y - camera.position.y) / rayWorld.y;
     if (t < 0.f) return {-1,-1};
 
     float wx = camera.position.x + rayWorld.x * t;
