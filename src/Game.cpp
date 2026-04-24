@@ -272,7 +272,9 @@ void Game::ApplyNetState(const GameStatePacket& pkt) {
         p->type        = (PieceType)s.type;   // keeps promotion (pawn→queen) in sync
         p->isMoving    = (s.flags & NET_FLAG_MOVING)    != 0;
         p->isJumping   = (s.flags & NET_FLAG_JUMPING)   != 0;
+        bool wasAlive  = !p->isDead;
         p->isDead      = (s.flags & NET_FLAG_DEAD)       != 0;
+        if (wasAlive && p->isDead) SpawnDeathParticles(p->worldPos); // client-side FX
         p->hasMoved    = (s.flags & NET_FLAG_HAS_MOVED) != 0;
         p->justLanded  = (s.flags & NET_FLAG_LANDED)     != 0;
         p->justArrived = (s.flags & NET_FLAG_ARRIVED)    != 0;
@@ -344,6 +346,7 @@ void Game::Update(float dt) {
         // Client: receive server state, send our input — no local simulation
         if (netClient) netClient->Poll();
         if (state == GameState::PLAYING) HandleInput();
+        UpdateParticles(dt);   // client runs its own particle simulation
         return;
     }
 
@@ -661,7 +664,10 @@ Color Game::PieceColors(const Piece& p, Color& outRim) {
 //    screen-RIGHT = world low-X   (VIS_RIGHT = 0.4)
 //  Bar anchors at VIS_LEFT and grows toward VIS_RIGHT → L→R visually.
 // ─────────────────────────────────────────────
-void Game::DrawManaChannel(float edgeZ, float mana) {
+// flip=false (light player / standalone): fill anchors at VIS_LEFT, grows →
+// flip=true  (dark  player):             fill anchors at VIS_RIGHT, grows ←
+//   so the bar always reads "left=empty, right=full" from the local player's view.
+void Game::DrawManaChannel(float edgeZ, float mana, bool flip) {
     const int   UNITS     = (int)Player::MAX_MANA;
     const float VIS_LEFT  = 7.60f;
     const float VIS_RIGHT = 0.40f;
@@ -674,22 +680,27 @@ void Game::DrawManaChannel(float edgeZ, float mana) {
 
     float fillW  = CHAN_W * (mana / (float)Player::MAX_MANA);
     float emptyW = CHAN_W - fillW;
-    float barLo  = VIS_LEFT - fillW;   // left boundary of the fill
 
-    // ── 1. Empty inner tube (dark, VIS_RIGHT → fill edge) ──────────────
+    // In normal mode  fill  = [VIS_LEFT-fillW, VIS_LEFT],  empty = [VIS_RIGHT, VIS_LEFT-fillW]
+    // In flipped mode fill  = [VIS_RIGHT, VIS_RIGHT+fillW], empty = [VIS_RIGHT+fillW, VIS_LEFT]
+    float fillX  = flip ? VIS_RIGHT               : VIS_LEFT - fillW;
+    float emptyX = flip ? VIS_RIGHT + fillW        : VIS_RIGHT;
+    float capX   = flip ? VIS_RIGHT + fillW        : VIS_LEFT - fillW; // meniscus position
+
+    // ── 1. Empty inner tube ─────────────────────────────────────────────
     if (emptyW >= 0.02f) {
         mdlCyl.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = {18, 4, 32, 255};
-        DrawModelEx(mdlCyl, {VIS_RIGHT, TOP_Y, edgeZ}, {0, 0, 1}, -90.0f,
+        DrawModelEx(mdlCyl, {emptyX, TOP_Y, edgeZ}, {0, 0, 1}, -90.0f,
                     {cylR * 2.f, emptyW, cylR * 2.f}, WHITE);
     }
 
-    // ── 2. Magenta fill (lit, fill edge → VIS_LEFT) ─────────────────────
+    // ── 2. Magenta fill ─────────────────────────────────────────────────
     if (fillW >= 0.02f) {
         mdlCyl.materials[0].maps[MATERIAL_MAP_DIFFUSE].color = {255, 20, 210, 255};
-        DrawModelEx(mdlCyl, {barLo, TOP_Y, edgeZ}, {0, 0, 1}, -90.0f,
+        DrawModelEx(mdlCyl, {fillX, TOP_Y, edgeZ}, {0, 0, 1}, -90.0f,
                     {cylR * 2.f, fillW, cylR * 2.f}, WHITE);
-        // Meniscus cap at fill boundary (covers seam between fill & empty)
-        DrawSph({barLo, TOP_Y, edgeZ}, cylR * 0.88f, {255, 20, 210, 255});
+        // Meniscus cap at the moving boundary between fill and empty
+        DrawSph({capX, TOP_Y, edgeZ}, cylR * 0.88f, {255, 20, 210, 255});
     }
 
     // ── 3. Dividers ─────────────────────────────────────────────────────
@@ -767,11 +778,18 @@ void Game::DrawBoard() {
         }
     }
 
-    // ── Mana channels (3-D liquid edges) ─────
-    // White: front edge (z ≈ −0.20), fills left→right
-    // Black: back  edge (z ≈  8.20), fills right→left
-    DrawManaChannel(-0.20f, white.mana);
-    DrawManaChannel( 8.20f, black.mana);
+    // ── Mana channel — only the local player's own bar ───────────────────
+    // Standalone: show both (same-screen play).
+    // Multiplayer: show only the local side, and flip the dark bar so it
+    //              reads left-empty → right-full from the dark player's view.
+    if (netMode == NetMode::STANDALONE) {
+        DrawManaChannel(-0.20f, white.mana, false);
+        DrawManaChannel( 8.20f, black.mana, false);
+    } else if (localColor == PieceColor::Light) {
+        DrawManaChannel(-0.20f, white.mana, false);
+    } else {
+        DrawManaChannel( 8.20f, black.mana, true);   // flipped for dark player
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -878,15 +896,6 @@ void Game::DrawPieces() {
 void Game::DrawUI() {
     const int sw = RW;
     const int sh = RH;
-
-    // ── Debug mana numbers (no backdrop, small, unobtrusive) ──
-    {
-        char buf[12];
-        snprintf(buf, sizeof(buf), "%.1f", white.mana);
-        DrawText(buf, 4, sh - 12, 7, {180, 120, 255, 180});
-        snprintf(buf, sizeof(buf), "%.1f", black.mana);
-        DrawText(buf, sw - MeasureText(buf, 7) - 4, 4, 7, {180, 120, 255, 180});
-    }
 
     // ── Selected piece tooltip ─────────────────
     if (selectedPiece) {

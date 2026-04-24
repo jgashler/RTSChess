@@ -122,7 +122,7 @@ private:
 
     // --- draw ---
     void GenerateBgNoise();
-    void DrawManaChannel(float edgeZ, float mana);
+    void DrawManaChannel(float edgeZ, float mana, bool flip);
     void DrawBoard();
     void DrawPieces();
     void DrawPiece(const Piece& p);
