@@ -63,3 +63,45 @@ jobs:
         with:
           name: RTSChess-macOS
           path: build/RTSChess
+
+  # ── Publish rolling release ───────────────────────────────────────────────
+  # Runs after both builds succeed. Downloads the two artifacts, renames them
+  # so they're distinguishable, and overwrites the "latest-build" pre-release.
+  publish:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RTSChess-Windows
+          path: dist/windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RTSChess-macOS
+          path: dist/macos
+
+      - name: Rename for release
+        run: |
+          mv dist/windows/RTSChess.exe dist/RTSChess-Windows.exe
+          mv dist/macos/RTSChess       dist/RTSChess-macOS
+
+      - name: Update rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-build
+          name: Latest Build
+          body: |
+            **Commit:** `${{ github.sha }}`
+
+            ${{ github.event.head_commit.message }}
+          prerelease: true
+          files: |
+            dist/RTSChess-Windows.exe
+            dist/RTSChess-macOS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
