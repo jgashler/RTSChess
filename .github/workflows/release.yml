@@ -1,0 +1,57 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Set up the 32-bit MSVC toolchain — the project is configured for x86.
+      - name: Set up MSVC x86
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      # Cache the entire build directory so FetchContent dependencies
+      # (raylib, libdatachannel, mbedtls) are not recompiled on every push.
+      # Key includes CMakeLists.txt hash so deps rebuild when the manifest changes.
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: cmake-build-x86-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: cmake-build-x86-
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G "NMake Makefiles" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      # Only build the game target — skips the datachannel tests and examples.
+      - name: Build
+        run: cmake --build build --target RTSChess
+
+      # Update (or create) a single rolling "latest-build" pre-release.
+      # The exe is overwritten with the new build on every successful push.
+      - name: Upload to rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-build
+          name: Latest Build
+          body: |
+            **Commit:** `${{ github.sha }}`
+
+            ${{ github.event.head_commit.message }}
+          prerelease: true
+          files: build/RTSChess.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
