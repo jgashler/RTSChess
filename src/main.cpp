@@ -54,7 +54,7 @@ int main() {
     const Color TITLE = {200, 100, 255, 255};
     const Color DIM   = {130, 130, 130, 255};
     const Color WARN  = {255, 200,  80, 255};
-    const Color LLGREEN = {140, 255, 160, 255};
+    const Color COL_OK  = {140, 255, 160, 255};
 
     // Draw the 6 code cells (big letters, used on both screens)
     auto drawCodeCells = [&](const std::string& code, int cx, int y) {
@@ -184,7 +184,7 @@ int main() {
                     if (connecting) {
                         DrawText("Connecting...",
                                  cx - MeasureText("Connecting...", 22) / 2,
-                                 420, 22, LGREEN);
+                                 420, 22, COL_OK);
                     } else {
                         DrawText("Waiting for opponent to join...",
                                  cx - MeasureText("Waiting for opponent to join...", 18) / 2,
@@ -279,7 +279,7 @@ int main() {
                 } else if (connecting) {
                     DrawText("Connecting...",
                              cx - MeasureText("Connecting...", 22) / 2,
-                             370, 22, LGREEN);
+                             370, 22, COL_OK);
                 } else {
                     DrawText(statusMsg.empty() ? "Working..." : "",
                              cx, 370, 18, DIM);
