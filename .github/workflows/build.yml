@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ── Windows ─────────────────────────────────────────────────────────────
+  # ── Windows ─────────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -33,9 +33,9 @@ jobs:
           name: RTSChess-Windows
           path: build/Release/RTSChess.exe
 
-  # ── macOS (universal: Intel + Apple Silicon) ─────────────────────────────
-  build-macos:
-    runs-on: macos-latest
+  # ── macOS arm64 (Apple Silicon) ──────────────────────────────────────────────
+  build-macos-arm64:
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -43,23 +43,75 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/_deps
-          key: macos-deps-${{ hashFiles('CMakeLists.txt') }}
+          key: macos-arm64-deps-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Package .app bundle
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: RTSChess-arm64
+          path: build/RTSChess
+
+  # ── macOS x86_64 (Intel) ─────────────────────────────────────────────────────
+  build-macos-x86_64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: macos-x86_64-deps-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: RTSChess-x86_64
+          path: build/RTSChess
+
+  # ── Package universal .app ────────────────────────────────────────────────────
+  package-macos:
+    needs: [build-macos-arm64, build-macos-x86_64]
+    runs-on: macos-latest
+    steps:
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: RTSChess-arm64
+          path: bins/arm64
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: RTSChess-x86_64
+          path: bins/x86_64
+
+      - name: Create universal .app and zip
         run: |
+          chmod +x bins/arm64/RTSChess bins/x86_64/RTSChess
+          lipo -create bins/arm64/RTSChess bins/x86_64/RTSChess -output RTSChess-universal
+          lipo -info RTSChess-universal
           mkdir -p RTSChess.app/Contents/MacOS
           mkdir -p RTSChess.app/Contents/Resources
-          cp build/RTSChess RTSChess.app/Contents/MacOS/RTSChess
+          cp RTSChess-universal RTSChess.app/Contents/MacOS/RTSChess
           cat > RTSChess.app/Contents/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -84,7 +136,7 @@ jobs:
           </dict>
           </plist>
           EOF
-          codesign --force -s - RTSChess.app
+          codesign --force --deep -s - RTSChess.app
           zip -r RTSChess-macOS.zip RTSChess.app
 
       - name: Upload
@@ -93,11 +145,9 @@ jobs:
           name: RTSChess-macOS
           path: RTSChess-macOS.zip
 
-  # ── Publish rolling release ───────────────────────────────────────────────
-  # Runs after both builds succeed. Downloads the two artifacts, renames them
-  # so they're distinguishable, and overwrites the "latest-build" pre-release.
+  # ── Publish rolling release ───────────────────────────────────────────────────
   publish:
-    needs: [build-windows, build-macos]
+    needs: [build-windows, package-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
