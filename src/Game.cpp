@@ -356,20 +356,31 @@ void Game::Update(float dt) {
     HandleInput();
     UpdatePieces(dt);
     CheckCollisions();
-    board.PurgeDead();
-    CheckWinCondition();
-    UpdateParticles(dt);
 
+    // Clear selectedPiece BEFORE PurgeDead so we never hold a dangling pointer.
+    if (selectedPiece && selectedPiece->isDead) {
+        selectedPiece = nullptr;
+        validMoves.clear();
+    }
+
+    // Broadcast BEFORE purging so the client sees isDead=true on killed pieces.
+    // Also force an immediate send on the frame pieces die (don't wait for timer).
     if (netMode == NetMode::HOST && netHost) {
         netHost->Poll();
         if (netHost->IsConnected()) {
+            bool anyDead = false;
+            for (auto& p : board.pieces) if (p->isDead) { anyDead = true; break; }
             netBroadcastTimer += dt;
-            if (netBroadcastTimer >= 0.05f) {
+            if (netBroadcastTimer >= 0.05f || anyDead) {
                 netBroadcastTimer = 0.f;
                 netHost->BroadcastState(BuildStatePacket());
             }
         }
     }
+
+    board.PurgeDead();
+    CheckWinCondition();
+    UpdateParticles(dt);
 }
 
 // ─────────────────────────────────────────────
@@ -419,25 +430,63 @@ bool Game::IsValidDest(GridPos g) const {
 void Game::HandleInput() {
     if (!IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) return;
 
+    // ── Build mouse ray (same projection as GetMouseGrid) ────────────────────
+    Vector2 mouse  = GetMousePosition();
+    Vector2 scaled = { mouse.x * (float)RW / (float)GetScreenWidth(),
+                       mouse.y * (float)RH / (float)GetScreenHeight() };
+    float ndcX    =  2.f * scaled.x / (float)RW - 1.f;
+    float ndcY    =  1.f - 2.f * scaled.y / (float)RH;
+    float aspect  = (float)RW / (float)RH;
+    float tanHalf = tanf(camera.fovy * DEG2RAD * 0.5f);
+    Vector3 rayView = { ndcX * aspect * tanHalf, ndcY * tanHalf, -1.f };
+    Vector3 fwd   = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(fwd, camera.up));
+    Vector3 up3   = Vector3CrossProduct(right, fwd);
+    Vector3 rayDir = Vector3Normalize(
+        Vector3Add(Vector3Add(Vector3Scale(right, rayView.x),
+                              Vector3Scale(up3,   rayView.y)), fwd));
+
+    // ── Ray-sphere pick: find closest selectable piece body under the cursor ──
+    // We test against a sphere centred at the piece's mid-body world position.
+    // This lets the player click anywhere on the visible model, not just the
+    // small square of board beneath it.
+    auto canSelectPiece = [&](const Piece* p) {
+        return p && !p->isDead && !p->isMoving && !p->isJumping &&
+               (netMode == NetMode::STANDALONE || p->color == localColor);
+    };
+
+    Piece* rayPick  = nullptr;
+    float  rayPickT = 1e30f;
+    for (auto& p : board.pieces) {
+        if (!canSelectPiece(p.get())) continue;
+        // Sphere centred at mid-body (~0.55 above board surface, so 0.28+0.55=0.83 world-Y)
+        Vector3 centre = { p->worldPos.x, p->worldPos.y + 0.55f, p->worldPos.z };
+        const float R  = 0.42f;   // generous click radius
+        Vector3 oc = Vector3Subtract(camera.position, centre);
+        float   b  = Vector3DotProduct(oc, rayDir);
+        float   c  = Vector3DotProduct(oc, oc) - R * R;
+        float disc = b * b - c;
+        if (disc < 0.f) continue;
+        float t = -b - sqrtf(disc);
+        if (t > 0.f && t < rayPickT) { rayPickT = t; rayPick = p.get(); }
+    }
+
+    // ── Grid square under cursor (for move destination and fallback select) ──
     GridPos clicked = GetMouseGrid();
-    if (clicked.x < 0) { selectedPiece = nullptr; validMoves.clear(); return; }
 
-    if (selectedPiece && IsValidDest(clicked)) {
-        // In multiplayer, only move your own colour
+    // ── Execute a pending move if the clicked square is a valid destination ──
+    // Piece-click is intentionally NOT allowed to override this — you are
+    // committing a move, not selecting a new piece.
+    if (selectedPiece && clicked.x >= 0 && IsValidDest(clicked)) {
         if (netMode != NetMode::STANDALONE && selectedPiece->color != localColor) {
-            selectedPiece = nullptr;
-            validMoves.clear();
-            return;
+            selectedPiece = nullptr; validMoves.clear(); return;
         }
-
         Player& pl = PlayerFor(selectedPiece->color);
         int cost   = selectedPiece->ManaCost();
         if (pl.CanAfford(cost)) {
             if (netMode == NetMode::CLIENT) {
-                // Send request to server — don't execute locally
                 netClient->SendMoveRequest(selectedPiece->id, clicked.x, clicked.y);
             } else {
-                // STANDALONE or HOST: execute immediately
                 pl.Spend(cost);
                 if (selectedPiece->type == PieceType::KNIGHT)
                     selectedPiece->StartJump(clicked);
@@ -447,18 +496,22 @@ void Game::HandleInput() {
                 }
             }
         }
-        selectedPiece = nullptr;
-        validMoves.clear();
+        selectedPiece = nullptr; validMoves.clear();
         return;
     }
 
-    Piece* p = board.GetPieceAt(clicked);
-    // In multiplayer, only allow selecting your own pieces
-    bool canSelect = p && !p->isMoving && !p->isJumping &&
-                     (netMode == NetMode::STANDALONE || p->color == localColor);
-    if (canSelect) {
-        selectedPiece = p;
-        validMoves    = board.GetValidMoves(p);
+    // ── Selection: ray-sphere pick has priority, grid square is the fallback ──
+    Piece* toSelect = nullptr;
+    if (rayPick) {
+        toSelect = rayPick;
+    } else if (clicked.x >= 0) {
+        Piece* gp = board.GetPieceAt(clicked);
+        if (canSelectPiece(gp)) toSelect = gp;
+    }
+
+    if (toSelect) {
+        selectedPiece = toSelect;
+        validMoves    = board.GetValidMoves(toSelect);
     } else {
         selectedPiece = nullptr;
         validMoves.clear();
@@ -685,18 +738,21 @@ void Game::DrawBoard() {
     bool darkInCheck  = (darkKingPos.x  >= 0) && IsInCheck(PieceColor::Dark);
 
     // Raised 0.03 above the border top so the rim is visible around the grid.
+    // Priority (lowest → highest): base → check-red → valid-move-green → selected-yellow.
+    // Check red is deliberately below valid-move green so that a square that is
+    // both the king-in-check square AND a valid destination still shows green
+    // (i.e. you can clearly see you can move there).
     for (int x = 0; x < 8; x++) {
         for (int y = 0; y < 8; y++) {
-            Color col = SquareColor(x, y);
-            GridPos gp = {x, y};
-            if (IsValidDest(gp))
-                col = {80, 200, 95, 255};
-            if (selectedPiece && selectedPiece->gridPos == gp)
-                col = {220, 210, 65, 255};
-            // Check highlight overrides everything — king safety is most visible
+            GridPos gp  = {x, y};
+            Color   col = SquareColor(x, y);
             if ((lightInCheck && gp == lightKingPos) ||
                 (darkInCheck  && gp == darkKingPos))
-                col = {220, 45, 45, 255};
+                col = {220, 45, 45, 255};          // check warning
+            if (IsValidDest(gp))
+                col = {80, 200, 95, 255};           // valid destination (beats check)
+            if (selectedPiece && selectedPiece->gridPos == gp)
+                col = {220, 210, 65, 255};          // selected piece
             DrawBox({x + 0.5f, 0.22f, y + 0.5f}, 0.97f, 0.12f, 0.97f, col);
         }
     }
