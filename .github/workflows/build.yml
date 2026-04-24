@@ -94,12 +94,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-build
-          name: Latest Build
+          name: RTSChess
           body: |
-            **Commit:** `${{ github.sha }}`
-
-            ${{ github.event.head_commit.message }}
-          prerelease: true
+            RTSCHESS RTSCHESS RTSCHESS
+          prerelease: false
           files: |
             dist/RTSChess-Windows.exe
             dist/RTSChess-macOS
